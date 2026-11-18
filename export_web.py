@@ -48,6 +48,13 @@ try:
         selected_objects_only=True,
         export_animation=True,
         export_materials=True,
+        # iOS AR Quick Look rejects the whole file ("Object could not be opened")
+        # if it contains the world DomeLight, whose texture Blender writes as .exr.
+        convert_world_material=False,
+        export_lights=False,
+        export_cameras=False,
+        # Quick Look ignores subdivisionScheme, so bake the Subdivision modifier.
+        export_subdivision='TESSELLATE',
     )
     # Skinned export options (names vary between Blender versions)
     props = bpy.ops.wm.usd_export.get_rna_type().properties.keys()
