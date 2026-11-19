@@ -3,14 +3,14 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <title>Santa in AR</title>
+  <title>Boy in AR</title>
   <script type="module" src="https://cdn.jsdelivr.net/npm/@google/model-viewer@4.0.0/dist/model-viewer.min.js"></script>
   <style>
     :root {
       --bg: #f6f3ee;
       --fg: #1d1d1f;
       --muted: #6b6b70;
-      --accent: #b3121b;
+      --accent: #1767b5;
       --accent-fg: #fff;
       --card: #ffffffcc;
     }
@@ -19,7 +19,7 @@
         --bg: #14161a;
         --fg: #f2f2f2;
         --muted: #a0a3aa;
-        --accent: #e0333c;
+        --accent: #5cafff;
         --card: #1f2228cc;
       }
     }
@@ -112,17 +112,17 @@
 </head>
 <body>
   <header>
-    <h1>Santa in AR</h1>
-    <p>Drag to rotate · pinch to zoom · tap "View in your space" on a phone</p>
+    <h1>Boy in AR</h1>
+    <p id="launchHint" role="status">Opening AR on supported phones…</p>
   </header>
 
   <model-viewer
-    id="santa"
-    src="santa.glb"
-    ios-src="santa.usdz"
-    alt="A rigged 3D Santa Claus waving"
+    id="boy"
+    src="boy.glb"
+    ios-src="boy.usdz"
+    alt="A rigged 3D boy waving"
     ar
-    ar-modes="webxr scene-viewer quick-look"
+    ar-modes="scene-viewer quick-look webxr"
     ar-scale="auto"
     ar-placement="floor"
     camera-controls
@@ -133,9 +133,9 @@
     exposure="1.05"
     environment-image="neutral"
     autoplay
-    animation-name="Santa_Wave">
+    animation-name="Boy_Wave">
 
-    <button slot="ar-button" class="ar-button">🎅 View in your space</button>
+    <button slot="ar-button" class="ar-button">👦 View in your space</button>
     <div class="ar-prompt">Move your phone slowly to find the floor</div>
 
     <div class="controls">
@@ -148,16 +148,37 @@
   </model-viewer>
 
   <script type="module">
-    const mv = document.getElementById('santa');
+    const mv = document.getElementById('boy');
     const btn = document.getElementById('toggleAnim');
+    const hint = document.getElementById('launchHint');
+    const tapHint = 'If AR doesn’t open automatically, tap “View in your space”.';
 
-    mv.addEventListener('load', () => {
+    mv.addEventListener('load', async () => {
       // Fall back to the first animation if the name differs.
-      if (!mv.availableAnimations.includes('Santa_Wave') && mv.availableAnimations.length) {
+      if (!mv.availableAnimations.includes('Boy_Wave') && mv.availableAnimations.length) {
         mv.animationName = mv.availableAnimations[0];
       }
       mv.play();
-      if (!mv.canActivateAR) document.getElementById('noAr').hidden = false;
+      await mv.updateComplete;
+      if (!mv.canActivateAR) {
+        document.getElementById('noAr').hidden = false;
+        hint.textContent = 'Drag to rotate · pinch to zoom';
+        return;
+      }
+
+      // Native AR first; a browser may still require a user gesture.
+      // Attempt once so returning from AR never opens it again in a loop.
+      hint.textContent = tapHint;
+      try {
+        await mv.activateAR();
+      } catch (error) {
+        hint.textContent = 'Tap “View in your space” to open AR.';
+        console.warn('Automatic AR launch was blocked:', error);
+      }
+    }, { once: true });
+
+    mv.addEventListener('ar-status', ({ detail: { status } }) => {
+      if (status === 'failed') hint.textContent = tapHint;
     });
 
     btn.addEventListener('click', () => {

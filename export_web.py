@@ -1,11 +1,11 @@
 """
-Export santa_rigged.blend for WebAR.
+Export boy_rigged.blend for WebAR.
 
-    blender.exe -b santa_rigged.blend -P export_web.py
+    blender -b boy_rigged.blend -P export_web.py
 
 Writes next to this script:
-  docs/santa.glb   - glTF binary with skin + "Santa_Wave" animation (Android / WebXR / desktop)
-  docs/santa.usdz  - USDZ for iOS AR Quick Look
+  docs/boy.glb   - glTF binary with skin + "Boy_Wave" animation (Android / WebXR / desktop)
+  docs/boy.usdz  - USDZ for iOS AR Quick Look
 (docs/ is what GitHub Pages publishes.)
 """
 import bpy, os
@@ -15,23 +15,23 @@ OUT = os.path.join(HERE, "docs")
 os.makedirs(OUT, exist_ok=True)
 
 scene = bpy.context.scene
-rig = bpy.data.objects["Santa_Rig"]
-santa = bpy.data.objects["Santa"]
+rig = bpy.data.objects["Boy_Rig"]
+boy = bpy.data.objects["Boy"]
 
 # Make sure the wave action is assigned so it gets exported.
-act = bpy.data.actions.get("Santa_Wave")
+act = bpy.data.actions.get("Boy_Wave")
 if act and rig.animation_data:
     rig.animation_data.action = act
 
-# Only export Santa + rig (no camera / light).
+# Only export Boy + rig (no camera / light).
 for ob in scene.objects:
-    ob.select_set(ob in (rig, santa))
+    ob.select_set(ob in (rig, boy))
 bpy.context.view_layer.objects.active = rig
 
-# Blender is Z-up, Santa faces -Y. glTF export converts to Y-up; Santa then faces +Z,
+# Blender is Z-up, Boy faces -Y. glTF export converts to Y-up; Boy then faces +Z,
 # which is "toward the viewer" in model-viewer. Good.
 bpy.ops.export_scene.gltf(
-    filepath=os.path.join(OUT, "santa.glb"),
+    filepath=os.path.join(OUT, "boy.glb"),
     export_format='GLB',
     use_selection=True,
     export_apply=False,          # keep armature modifier live (skinning)
@@ -44,7 +44,7 @@ print("[export] glb done")
 
 try:
     kwargs = dict(
-        filepath=os.path.join(OUT, "santa.usdz"),
+        filepath=os.path.join(OUT, "boy.usdz"),
         selected_objects_only=True,
         export_animation=True,
         export_materials=True,
@@ -69,4 +69,4 @@ try:
     bpy.ops.wm.usd_export(**kwargs)
     print("[export] usdz done")
 except Exception as e:
-    print(f"[export] usdz FAILED: {e}")
+    raise RuntimeError("USDZ export failed") from e

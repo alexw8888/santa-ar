@@ -1,15 +1,15 @@
 """
-Procedural, rigged Santa Claus for Blender (tested on Blender 5.3).
+Procedural, rigged boy for Blender (tested on Blender 4.3).
 
 Run headless:
-    blender.exe -b --factory-startup -P build_santa.py -- [preview_dir]
+    blender -b --factory-startup -P build_boy.py -- [preview_dir]
 
-Produces santa_rigged.blend next to this script:
-  * "Santa"      - one mesh, multiple materials, vertex groups per bone,
+Produces boy_rigged.blend next to this script:
+  * "Boy"      - one mesh, multiple materials, vertex groups per bone,
                    Armature + Subdivision modifiers
-  * "Santa_Rig"  - armature (root, hips, spine, chest, neck, head, hat,
+  * "Boy_Rig"  - armature (root, hips, spine, chest, neck, head,
                    shoulder/upper_arm/forearm/hand .L/.R, thigh/shin/foot .L/.R)
-  * "Santa_Wave" - a small waving animation (frames 1-60)
+  * "Boy_Wave" - a small waving animation (frames 1-60)
   * camera + sun light
 If preview_dir is given, a few Workbench renders are written there.
 """
@@ -19,7 +19,7 @@ from mathutils import Vector, Matrix, Quaternion, Euler
 HERE = os.path.dirname(os.path.abspath(__file__))
 ARGV = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
 PREVIEW_DIR = ARGV[0] if ARGV else None
-BLEND_PATH = os.path.join(HERE, "santa_rigged.blend")
+BLEND_PATH = os.path.join(HERE, "boy_rigged.blend")
 
 # ---------------------------------------------------------------- clean scene
 for ob in list(bpy.data.objects):
@@ -31,24 +31,23 @@ for coll in (bpy.data.meshes, bpy.data.materials, bpy.data.armatures,
 scene = bpy.context.scene
 
 # ---------------------------------------------------------------- skeleton
-# name, head, tail, parent, deform, connected   (left side = +X, Santa faces -Y)
+# name, head, tail, parent, deform, connected   (left side = +X, Boy faces -Y)
 CENTER_BONES = [
-    ("root",  (0, 0, 0),        (0, 0.3, 0),      None,    False, False),
-    ("hips",  (0, 0, 0.97),     (0, 0, 1.10),     "root",  True,  False),
-    ("spine", (0, 0, 1.10),     (0, 0, 1.33),     "hips",  True,  True),
-    ("chest", (0, 0, 1.33),     (0, 0, 1.55),     "spine", True,  True),
-    ("neck",  (0, 0, 1.55),     (0, 0, 1.63),     "chest", True,  True),
-    ("head",  (0, 0, 1.63),     (0, 0, 1.86),     "neck",  True,  True),
-    ("hat",   (0, 0.02, 1.93),  (0, 0.22, 2.02),  "head",  True,  False),
+    ("root",  (0, 0, 0),     (0, 0.2, 0),   None,    False, False),
+    ("hips",  (0, 0, 0.66),  (0, 0, 0.78),  "root",  True,  False),
+    ("spine", (0, 0, 0.78),  (0, 0, 0.94),  "hips",  True,  True),
+    ("chest", (0, 0, 0.94),  (0, 0, 1.065), "spine", True,  True),
+    ("neck",  (0, 0, 1.065), (0, 0, 1.13),  "chest", True,  True),
+    ("head",  (0, 0, 1.13),  (0, 0, 1.36),  "neck",  True,  True),
 ]
 LEFT_BONES = [
-    ("shoulder",  (0.04, 0, 1.50),     (0.19, 0, 1.50),      "chest",     False),
-    ("upper_arm", (0.19, 0, 1.50),     (0.45, 0, 1.28),      "shoulder",  True),
-    ("forearm",   (0.45, 0, 1.28),     (0.62, -0.04, 1.08),  "upper_arm", True),
-    ("hand",      (0.62, -0.04, 1.08), (0.67, -0.05, 0.97),  "forearm",   True),
-    ("thigh",     (0.12, 0, 0.97),     (0.13, 0, 0.52),      "hips",      False),
-    ("shin",      (0.13, 0, 0.52),     (0.13, 0.02, 0.12),   "thigh",     True),
-    ("foot",      (0.13, 0.02, 0.12),  (0.13, -0.14, 0.04),  "shin",      True),
+    ("shoulder",  (0.035, 0, 1.015),   (0.155, 0, 1.015),  "chest",     False),
+    ("upper_arm", (0.155, 0, 1.015),   (0.32, 0, 0.845),   "shoulder",  True),
+    ("forearm",   (0.32, 0, 0.845),    (0.40, -0.025, 0.68), "upper_arm", True),
+    ("hand",      (0.40, -0.025, 0.68), (0.425, -0.03, 0.60), "forearm", True),
+    ("thigh",     (0.085, 0, 0.66),   (0.09, 0, 0.36),    "hips",      False),
+    ("shin",      (0.09, 0, 0.36),    (0.09, 0.015, 0.10), "thigh",    True),
+    ("foot",      (0.09, 0.015, 0.10), (0.09, -0.09, 0.045), "shin",   True),
 ]
 CENTER_PARENTS = {"hips", "chest", "spine", "head", "neck", "root"}
 
@@ -65,13 +64,18 @@ GIDX = {n: i for i, n in enumerate(DEFORM)}
 
 # ---------------------------------------------------------------- materials
 MAT_DEFS = {
-    "Coat_Red":  dict(color=(0.55, 0.01, 0.015), rough=0.65),
-    "Fur_White": dict(color=(0.92, 0.92, 0.90), rough=1.0),
-    "Skin":      dict(color=(0.90, 0.60, 0.48), rough=0.5),
-    "Rosy":      dict(color=(0.85, 0.32, 0.30), rough=0.5),
-    "Black":     dict(color=(0.015, 0.015, 0.015), rough=0.35),
-    "Gold":      dict(color=(0.95, 0.70, 0.15), rough=0.25, metal=1.0),
-    "Eye":       dict(color=(0.005, 0.005, 0.01), rough=0.1),
+    "Shirt_Blue": dict(color=(0.035, 0.30, 0.66), rough=0.8),
+    "Rib_Blue":   dict(color=(0.025, 0.19, 0.44), rough=0.85),
+    "Denim":      dict(color=(0.035, 0.075, 0.17), rough=0.9),
+    "Skin":       dict(color=(0.72, 0.44, 0.27), rough=0.65),
+    "Cheek":      dict(color=(0.73, 0.33, 0.24), rough=0.7),
+    "Hair":       dict(color=(0.075, 0.032, 0.018), rough=0.85),
+    "Hair_Light": dict(color=(0.12, 0.055, 0.028), rough=0.85),
+    "White":      dict(color=(0.94, 0.95, 0.93), rough=0.7),
+    "Sneaker":    dict(color=(0.045, 0.12, 0.23), rough=0.8),
+    "Yellow":     dict(color=(1.0, 0.65, 0.06), rough=0.65),
+    "Eye":        dict(color=(0.012, 0.008, 0.006), rough=0.25),
+    "Smile":      dict(color=(0.24, 0.075, 0.045), rough=0.8),
 }
 MAT_NAMES = list(MAT_DEFS)
 for name, d in MAT_DEFS.items():
@@ -92,7 +96,6 @@ for name, d in MAT_DEFS.items():
 # ---------------------------------------------------------------- geometry helpers
 bm = bmesh.new()
 DL = bm.verts.layers.deform.verify()
-CREASE = bm.edges.layers.float.new("crease_edge")
 
 
 def seg_dist(p, a, b):
@@ -137,15 +140,6 @@ def ellipsoid(center, radii, mat, cands=None, wfn=None, direction=None, euler=No
     res = bmesh.ops.create_uvsphere(bm, u_segments=segs, v_segments=rings,
                                     radius=1.0, matrix=M)
     finish(res["verts"], mat, cands, wfn)
-
-
-def box(center, size, mat, cands):
-    M = Matrix.Translation(center) @ Matrix.Diagonal((*size, 1.0))
-    res = bmesh.ops.create_cube(bm, size=1.0, matrix=M)
-    edges = {e for v in res["verts"] for e in v.link_edges}
-    for e in edges:
-        e[CREASE] = 1.0
-    finish(res["verts"], mat, cands, smooth=False)
 
 
 def tube(points, radii, mat, cands=None, wfn=None, subdiv=4, segs=16):
@@ -199,109 +193,103 @@ def torus(center, normal, major, minor, mat, cands=None, wfn=None, major_b=None,
 
 
 # ---------------------------------------------------------------- body
+# Child proportions: about 1.45 m tall, with a larger head and a slim torso.
 TORSO = ["hips", "spine", "chest"]
-BELLY_C, BELLY_R = Vector((0, -0.03, 1.20)), Vector((0.33, 0.30, 0.36))
-CHEST_C, CHEST_R = Vector((0, 0.01, 1.42)), Vector((0.28, 0.22, 0.18))
+# One continuous surface keeps the front of the sweatshirt smooth.
+shirt_rings = []
+for z, width, depth in ((0.68, 0.15, 0.102), (0.70, 0.16, 0.11),
+                         (0.76, 0.165, 0.115), (0.86, 0.175, 0.125),
+                         (0.96, 0.175, 0.12), (1.015, 0.16, 0.10),
+                         (1.05, 0.10, 0.07), (1.065, 0.06, 0.052)):
+    shirt_rings.append([bm.verts.new((width * math.cos(a), depth * math.sin(a), z))
+                        for a in (math.tau * j / 32 for j in range(32))])
+for lower, upper in zip(shirt_rings, shirt_rings[1:]):
+    for j in range(32):
+        bm.faces.new((lower[j], lower[(j + 1) % 32], upper[(j + 1) % 32], upper[j]))
+bm.faces.new(tuple(reversed(shirt_rings[0])))
+bm.faces.new(tuple(shirt_rings[-1]))
+finish([v for ring in shirt_rings for v in ring], "Shirt_Blue", TORSO)
+torus((0, 0, 0.695), (0, 0, 1), 0.154, 0.013, "Rib_Blue", TORSO, major_b=0.104)
+ellipsoid((0, 0, 0.655), (0.145, 0.10, 0.10), "Denim", ["hips"])
 
-ellipsoid(BELLY_C, BELLY_R, "Coat_Red", TORSO, segs=32, rings=20)
-ellipsoid(CHEST_C, CHEST_R, "Coat_Red", ["spine", "chest"], segs=28, rings=16)
-
-# coat skirt + fur hem
-SKIRT = ["hips", "thigh.L", "thigh.R"]
-tube([(0, -0.02, 1.03), (0, -0.02, 0.86)], [0.30, 0.32], "Coat_Red", SKIRT, segs=32)
-torus((0, -0.02, 0.86), (0, 0, 1), 0.32, 0.04, "Fur_White", SKIRT)
-
-# belt + buckle
-torus((0, -0.03, 1.06), (0, 0, 1), 0.305, 0.04, "Black", ["hips", "spine"], major_b=0.28)
-box((0, -0.355, 1.06), (0.12, 0.03, 0.09), "Gold", ["hips", "spine"])
-box((0, -0.37, 1.06), (0.07, 0.01, 0.05), "Black", ["hips", "spine"])
-
-
-def front_y(z):
-    ys = []
-    for c, r in ((BELLY_C, BELLY_R), (CHEST_C, CHEST_R)):
-        k = (z - c.z) / r.z
-        if abs(k) < 1:
-            ys.append(c.y - r.y * math.sqrt(1 - k * k))
-    if 0.86 <= z <= 1.03:
-        ys.append(-0.02 - (0.30 + (1.03 - z) / 0.17 * 0.02))
-    return min(ys)
-
-
-strip = [(0, front_y(z) + 0.005, z) for z in [1.56 - i * 0.05 for i in range(14)]]
-tube(strip, [0.03] * len(strip), "Fur_White", TORSO, subdiv=2, segs=12)
-
-# collar
-torus((0, 0, 1.59), (0, 0, 1), 0.13, 0.045, "Fur_White", ["chest", "neck"])
+# Neck, ribbed collar, and a small sunshine emblem on the sweatshirt.
+ellipsoid((0, 0, 1.09), (0.055, 0.055, 0.075), "Skin", ["neck", "head"])
+torus((0, 0, 1.06), (0, 0, 1), 0.065, 0.014, "Rib_Blue", ["chest", "neck"])
+ellipsoid((0, -0.123, 0.94), (0.037, 0.008, 0.037), "Yellow", ["chest"], segs=20)
+for i in range(8):
+    angle = i * math.tau / 8
+    dx, dz = math.cos(angle), math.sin(angle)
+    tube([(dx * 0.044, -0.124, 0.94 + dz * 0.044),
+          (dx * 0.055, -0.124, 0.94 + dz * 0.055)],
+         [0.004, 0.004], "Yellow", ["chest"], subdiv=1, segs=8)
 
 # ---------------------------------------------------------------- head
 HEAD = ["head"]
-ellipsoid((0, 0, 1.74), (0.13, 0.13, 0.13), "Skin", HEAD)
-ellipsoid((0, 0.03, 1.72), (0.14, 0.12, 0.12), "Fur_White", HEAD)          # hair
-ellipsoid((0, -0.135, 1.745), (0.032, 0.03, 0.03), "Rosy", HEAD, segs=16, rings=10)
-ellipsoid((0, -0.06, 1.62), (0.15, 0.10, 0.17), "Fur_White", HEAD)         # beard
-ellipsoid((0, -0.10, 1.48), (0.10, 0.07, 0.10), "Fur_White", HEAD)         # beard tip
-for s in (1, -1):
-    ellipsoid((0.045 * s, -0.117, 1.78), (0.016, 0.012, 0.018), "Eye", HEAD, segs=12, rings=8)
-    ellipsoid((0.05 * s, -0.117, 1.815), (0.035, 0.015, 0.012), "Fur_White", HEAD,
-              euler=(0, -10 * s, 0), segs=12, rings=8)                    # eyebrow
-    ellipsoid((0.075 * s, -0.10, 1.725), (0.032, 0.025, 0.028), "Rosy", HEAD,
-              segs=12, rings=8)                                            # cheek
-    ellipsoid((0.05 * s, -0.128, 1.705), (0.065, 0.03, 0.028), "Fur_White", HEAD,
-              euler=(0, 15 * s, 0), segs=16, rings=10)                     # moustache
+ellipsoid((0, 0, 1.245), (0.143, 0.132, 0.17), "Skin", HEAD, segs=32, rings=20)
+for side in (1, -1):
+    ellipsoid((0.14 * side, 0, 1.245), (0.028, 0.027, 0.043), "Skin", HEAD)
+    ellipsoid((0.158 * side, -0.017, 1.245), (0.011, 0.012, 0.025), "Cheek", HEAD)
+    # Open eyes with dark pupils and small catchlights.
+    ellipsoid((0.052 * side, -0.122, 1.272), (0.032, 0.018, 0.038), "White", HEAD)
+    ellipsoid((0.049 * side, -0.139, 1.271), (0.015, 0.01, 0.022), "Eye", HEAD)
+    ellipsoid((0.049 * side - 0.004, -0.148, 1.28), (0.005, 0.004, 0.006), "White", HEAD,
+              segs=12, rings=8)
+    ellipsoid((0.052 * side, -0.113, 1.323), (0.033, 0.012, 0.008), "Hair", HEAD,
+              euler=(0, -8 * side, 0))
+    ellipsoid((0.088 * side, -0.107, 1.218), (0.025, 0.009, 0.017), "Cheek", HEAD)
+ellipsoid((0, -0.137, 1.235), (0.021, 0.027, 0.025), "Skin", HEAD)
+tube([(-0.044, -0.115, 1.183), (-0.024, -0.124, 1.171),
+      (0, -0.127, 1.167), (0.024, -0.124, 1.171), (0.044, -0.115, 1.183)],
+     [0.004] * 5, "Smile", HEAD, subdiv=3, segs=8)
 
-# hat
-
-
-def hat_w(p):
-    w = max(0.0, min(1.0, (p.z - 1.88) / 0.10))
-    return {"head": 1 - w, "hat": w} if 0 < w < 1 else ({"hat": 1.0} if w >= 1 else {"head": 1.0})
-
-
-tube([(0, 0, 1.80), (0, 0.02, 1.93), (0, 0.10, 2.04), (0, 0.22, 2.02)],
-     [0.14, 0.11, 0.06, 0.015], "Coat_Red", wfn=hat_w, subdiv=5, segs=20)
-torus((0, 0, 1.80), (0, 0, 1), 0.135, 0.038, "Fur_White", HEAD)
-ellipsoid((0, 0.24, 2.01), (0.045, 0.045, 0.045), "Fur_White", ["hat"], segs=16, rings=10)
+# Short brown hair: back, crown, sideburns, and a swept fringe above the eyebrows.
+ellipsoid((0, 0.045, 1.29), (0.145, 0.105, 0.145), "Hair", HEAD)
+ellipsoid((0, 0, 1.375), (0.15, 0.125, 0.07), "Hair", HEAD)
+for side in (1, -1):
+    ellipsoid((0.132 * side, 0.006, 1.298), (0.022, 0.08, 0.075), "Hair", HEAD)
+ellipsoid((-0.058, -0.095, 1.365), (0.088, 0.048, 0.047), "Hair_Light", HEAD,
+          euler=(0, -18, 0))
+ellipsoid((0.047, -0.097, 1.382), (0.08, 0.044, 0.043), "Hair", HEAD,
+          euler=(0, 22, 0))
 
 # ---------------------------------------------------------------- limbs
-for side, s in (("L", 1), ("R", -1)):
-    X = lambda p: (p[0] * s, p[1], p[2])
+for side, sign in (("L", 1), ("R", -1)):
+    X = lambda p: (p[0] * sign, p[1], p[2])
     b = lambda n: f"{n}.{side}"
-    # arm
-    ellipsoid(X((0.19, 0, 1.49)), (0.10, 0.10, 0.10), "Coat_Red",
-              [b("upper_arm"), "chest"])
-    tube([X((0.17, 0, 1.50)), X((0.45, 0, 1.28)), X((0.60, -0.035, 1.10))],
-         [0.085, 0.075, 0.07], "Coat_Red", [b("upper_arm"), b("forearm")], subdiv=5)
-    fore_dir = X((0.17, -0.04, -0.20))
-    torus(X((0.60, -0.035, 1.10)), fore_dir, 0.075, 0.03, "Fur_White", [b("forearm")])
-    ellipsoid(X((0.655, -0.048, 1.02)), (0.055, 0.045, 0.075), "Black", [b("hand")],
-              direction=X((0.05, -0.01, -0.11)), segs=16, rings=10)
-    ellipsoid(X((0.625, -0.09, 1.05)), (0.022, 0.022, 0.038), "Black", [b("hand")],
-              direction=X((-0.2, -0.5, -1)), segs=12, rings=8)             # thumb
-    # leg
-    tube([X((0.12, 0, 0.98)), X((0.13, 0, 0.52)), X((0.13, 0.02, 0.20))],
-         [0.11, 0.09, 0.08], "Coat_Red", ["hips", b("thigh"), b("shin")], subdiv=5)
-    tube([X((0.13, 0.02, 0.36)), X((0.13, 0.02, 0.08))], [0.09, 0.09], "Black",
-         [b("shin"), b("foot")], subdiv=4)
-    torus(X((0.13, 0.02, 0.36)), (0, 0, 1), 0.095, 0.03, "Fur_White", [b("shin")])
-    ellipsoid(X((0.13, -0.05, 0.065)), (0.09, 0.16, 0.065), "Black",
-              [b("shin"), b("foot")], segs=20, rings=12)
+    # Sleeves, cuffs, bare hands, and thumbs.
+    tube([X((0.14, 0, 1.015)), X((0.32, 0, 0.845)), X((0.393, -0.023, 0.695))],
+         [0.065, 0.052, 0.043], "Shirt_Blue", [b("upper_arm"), b("forearm")], subdiv=5)
+    torus(X((0.393, -0.023, 0.695)), X((0.08, -0.025, -0.165)),
+          0.04, 0.011, "Rib_Blue", [b("forearm")])
+    ellipsoid(X((0.415, -0.029, 0.635)), (0.035, 0.029, 0.055), "Skin", [b("hand")],
+              direction=X((0.025, -0.005, -0.08)))
+    ellipsoid(X((0.388, -0.052, 0.652)), (0.016, 0.017, 0.028), "Skin", [b("hand")],
+              direction=X((-0.2, -0.3, -1)))
+    # Jeans and low-top sneakers, including soles, tongues, and laces.
+    tube([X((0.085, 0, 0.68)), X((0.09, 0, 0.36)), X((0.09, 0.015, 0.105))],
+         [0.075, 0.061, 0.053], "Denim", ["hips", b("thigh"), b("shin")], subdiv=5)
+    ellipsoid(X((0.09, -0.042, 0.037)), (0.065, 0.118, 0.035), "White", [b("foot")])
+    ellipsoid(X((0.09, -0.035, 0.065)), (0.061, 0.11, 0.048), "Sneaker", [b("foot")])
+    ellipsoid(X((0.09, -0.015, 0.104)), (0.025, 0.047, 0.014), "White", [b("foot")])
+    for y in (-0.045, -0.025, -0.005):
+        tube([X((0.069, y, 0.115)), X((0.111, y, 0.115))],
+             [0.003, 0.003], "White", [b("foot")], subdiv=1, segs=8)
 
 bmesh.ops.recalc_face_normals(bm, faces=bm.faces[:])
 
 # ---------------------------------------------------------------- objects
-me = bpy.data.meshes.new("Santa_Mesh")
+me = bpy.data.meshes.new("Boy_Mesh")
 bm.to_mesh(me)
 bm.free()
 for n in MAT_NAMES:
     me.materials.append(bpy.data.materials[n])
-santa = bpy.data.objects.new("Santa", me)
-scene.collection.objects.link(santa)
+boy = bpy.data.objects.new("Boy", me)
+scene.collection.objects.link(boy)
 for n in DEFORM:
-    santa.vertex_groups.new(name=n)
+    boy.vertex_groups.new(name=n)
 
-arm_data = bpy.data.armatures.new("Santa_Rig")
-rig = bpy.data.objects.new("Santa_Rig", arm_data)
+arm_data = bpy.data.armatures.new("Boy_Rig")
+rig = bpy.data.objects.new("Boy_Rig", arm_data)
 scene.collection.objects.link(rig)
 rig.show_in_front = True
 bpy.context.view_layer.objects.active = rig
@@ -315,10 +303,10 @@ for name, h, t, parent, deform, conn in BONES:
         eb.use_connect = conn
 bpy.ops.object.mode_set(mode='OBJECT')
 
-santa.parent = rig
-mod = santa.modifiers.new("Armature", 'ARMATURE')
+boy.parent = rig
+mod = boy.modifiers.new("Armature", 'ARMATURE')
 mod.object = rig
-sub = santa.modifiers.new("Subdivision", 'SUBSURF')
+sub = boy.modifiers.new("Subdivision", 'SUBSURF')
 sub.levels, sub.render_levels = 1, 2
 
 for pb in rig.pose.bones:
@@ -326,7 +314,7 @@ for pb in rig.pose.bones:
 
 # sanity: every vertex weighted
 unweighted = sum(1 for v in me.vertices if not v.groups)
-print(f"[santa] verts={len(me.vertices)} faces={len(me.polygons)} unweighted={unweighted}")
+print(f"[boy] verts={len(me.vertices)} faces={len(me.polygons)} unweighted={unweighted}")
 
 
 # ---------------------------------------------------------------- wave animation
@@ -352,7 +340,7 @@ for f, bones in KEYS.items():
         pb.rotation_quaternion = q_world(bone, axis, deg)
         pb.keyframe_insert("rotation_quaternion", frame=f)
 act = rig.animation_data.action
-act.name = "Santa_Wave"
+act.name = "Boy_Wave"
 act.use_fake_user = True
 scene.frame_start, scene.frame_end = 1, 60
 scene.frame_set(1)
@@ -360,8 +348,9 @@ scene.frame_set(1)
 # ---------------------------------------------------------------- camera / light / world
 cam = bpy.data.objects.new("Camera", bpy.data.cameras.new("Camera"))
 scene.collection.objects.link(cam)
-cam.location = (2.2, -4.6, 1.6)
-cam.rotation_euler = (Vector((0, 0, 1.05)) - cam.location).to_track_quat('-Z', 'Y').to_euler()
+cam.location = (1.45, -3.5, 1.25)
+cam.data.lens = 65
+cam.rotation_euler = (Vector((0, 0, 0.73)) - cam.location).to_track_quat('-Z', 'Y').to_euler()
 scene.camera = cam
 sun = bpy.data.objects.new("Sun", bpy.data.lights.new("Sun", 'SUN'))
 sun.data.energy = 3.5
@@ -385,8 +374,8 @@ for eng in ("BLENDER_EEVEE", "BLENDER_EEVEE_NEXT"):
 
 rig.select_set(False)
 bpy.context.view_layer.objects.active = rig
-bpy.ops.wm.save_as_mainfile(filepath=BLEND_PATH)
-print(f"[santa] saved {BLEND_PATH}")
+bpy.ops.wm.save_as_mainfile(filepath=BLEND_PATH, compress=True)
+print(f"[boy] saved {BLEND_PATH}")
 
 # ---------------------------------------------------------------- previews (not saved)
 if PREVIEW_DIR:
@@ -409,10 +398,9 @@ if PREVIEW_DIR:
         pb.rotation_quaternion = (1, 0, 0, 0)
     pose = {"thigh.L": ((1, 0, 0), -45), "shin.L": ((1, 0, 0), 70),
             "upper_arm.L": ((0, 1, 0), -80), "forearm.L": ((0, 1, 0), -40),
-            "upper_arm.R": ((1, 0, 0), -50), "head": ((0, 0, 1), 30),
-            "hat": ((1, 0, 0), 35)}
+            "upper_arm.R": ((1, 0, 0), -50), "head": ((0, 0, 1), 30)}
     for bone, (axis, deg) in pose.items():
         rig.pose.bones[bone].rotation_quaternion = q_world(bone, axis, deg)
-    cam.location = (-3.6, -3.6, 1.5)
-    cam.rotation_euler = (Vector((0, 0, 1.0)) - cam.location).to_track_quat('-Z', 'Y').to_euler()
+    cam.location = (-2.4, -3.0, 1.25)
+    cam.rotation_euler = (Vector((0, 0, 0.73)) - cam.location).to_track_quat('-Z', 'Y').to_euler()
     shot("pose.png")
