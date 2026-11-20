@@ -13,14 +13,19 @@ mesh.data.calc_loop_triangles()
 assert len(mesh.data.loop_triangles) < 160000, 'Mobile geometry budget exceeded'
 assert all(v.groups and abs(sum(g.weight for g in v.groups)-1) < 1e-4 for v in mesh.data.vertices)
 assert all(im.packed_file for im in bpy.data.images if im.source == 'FILE'), 'Texture is not packed'
-assert rig.animation_data.action.name == 'Santa01_Pour_and_Drink'
+assert rig.animation_data.action.name == 'Santa01_Pour_and_Smell'
 assert scene.frame_start == 1 and scene.frame_end == 300
+# The dark mouth-interior material is reserved for the kettle spout, never the face.
+head_group=mesh.vertex_groups['head'].index
+mouth_index=next(i for i,m in enumerate(mesh.data.materials) if m.name=='Mouth_interior')
+assert not any(p.material_index==mouth_index and any(g.group==head_group and g.weight>.99 for g in mesh.data.vertices[p.vertices[0]].groups) for p in mesh.data.polygons)
+
 originals={name: rig.data.bones[name].matrix_local.inverted() for name in ('cup','kettle','hand.L','hand.R','stream')}
 
 def transformed(name, point):
     return rig.pose.bones[name].matrix @ originals[name] @ Vector(point)
 
-# Hand/prop attachment must remain rigid while both arms bend and the glass tips.
+# Hand/prop attachment must remain rigid while both arms bend and the glass stays upright.
 loop=[]
 for frame in range(1,301):
     scene.frame_set(frame)
@@ -34,6 +39,13 @@ for frame in range(1,301):
     assert all(math.isfinite(c) for pb in rig.pose.bones for row in pb.matrix for c in row)
     level=rig.pose.bones['liquid'].scale.y
     assert .4199 <= level <= 1.0001, 'Coffee overflow'
+    cup_up=rig.pose.bones['cup'].matrix.to_3x3() @ Vector((0,1,0))
+    assert cup_up.normalized().dot(Vector((0,0,1)))>.9999, 'Glass tips as if drinking'
+    if 204<=frame<=240:
+        assert abs(level-1)<1e-4, 'Coffee is consumed during the aroma gesture'
+        assert rig.pose.bones['head'].rotation_quaternion.x>0, 'Head should lean toward the aroma'
+        assert (rig.pose.bones['cup'].head-Vector((.030,-.355,1.590))).length<1e-4
+
     flowing=rig.pose.bones['stream'].scale.x > .999
     if flowing:
         spout=transformed('kettle',(0,-.412,1.37))
@@ -56,7 +68,7 @@ magic,version,length=struct.unpack_from('<4sII',raw)
 assert magic==b'glTF' and version==2 and length==len(raw)
 n,kind=struct.unpack_from('<I4s',raw,12)
 gltf=json.loads(raw[20:20+n])
-assert [a['name'] for a in gltf['animations']]==['Santa01_Pour_and_Drink']
+assert [a['name'] for a in gltf['animations']]==['Santa01_Pour_and_Smell']
 assert gltf['skins'] and gltf['images']
 assert all('bufferView' in im for im in gltf['images']), 'Texture is external'
 assert all('JOINTS_0' in p['attributes'] and 'WEIGHTS_0' in p['attributes'] for m in gltf['meshes'] for p in m['primitives'])
