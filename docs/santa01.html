@@ -114,15 +114,15 @@
 <body>
   <header>
     <h1>Santa’s coffee break</h1>
-    <p class="edition">Santa 01 · Pour &amp; sip</p>
+    <p class="edition">Santa 01 · Pour &amp; enjoy the aroma</p>
     <p id="launchHint" role="status">Opening AR on supported phones…</p>
   </header>
 
   <model-viewer
     id="santa01"
-    src="santa01.glb"
-    ios-src="santa01.usdz"
-    alt="A detailed Santa pouring coffee from a brass kettle, then lifting a glass to drink"
+    src="santa01.glb?v=smile-aroma-2"
+    ios-src="santa01.usdz?v=smile-aroma-2"
+    alt="A detailed Santa pouring coffee from a brass kettle, then smiling and holding an upright glass near his nose to smell the aroma"
     ar
     ar-modes="scene-viewer quick-look webxr"
     ar-scale="auto"
@@ -130,13 +130,13 @@
     camera-controls
     touch-action="pan-y"
     camera-orbit="18deg 80deg auto"
-    poster="santa01-poster.webp"
+    poster="santa01-poster.webp?v=smile-aroma-2"
     shadow-intensity="1"
     shadow-softness="0.8"
     exposure="1.05"
     environment-image="neutral"
     autoplay
-    animation-name="Santa01_Pour_and_Drink">
+    animation-name="Santa01_Pour_and_Smell">
 
     <button slot="ar-button" class="ar-button">🎅 View in your space</button>
     <div class="ar-prompt">Move your phone slowly to find the floor</div>
@@ -158,7 +158,7 @@
 
     mv.addEventListener('load', async () => {
       // Fall back to the first animation if the name differs.
-      if (!mv.availableAnimations.includes('Santa01_Pour_and_Drink') && mv.availableAnimations.length) {
+      if (!mv.availableAnimations.includes('Santa01_Pour_and_Smell') && mv.availableAnimations.length) {
         mv.animationName = mv.availableAnimations[0];
       }
       mv.play();

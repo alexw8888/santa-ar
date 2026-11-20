@@ -1,4 +1,4 @@
-"""Build Santa 01: a detailed, mobile-friendly Santa pouring and sipping coffee.
+"""Build Santa 01: a detailed, mobile-friendly Santa pouring coffee and enjoying its aroma.
 
 blender -b --factory-startup --python-exit-code 1 -P build_santa01.py -- [preview_dir]
 Writes santa01.blend, packed with its generated PBR textures. No hair particles,
@@ -114,12 +114,12 @@ RED = material('Crimson_velvet', (.44, .012, .023), texture='cloth')
 FUR = material('Ivory_fur', (.87, .84, .76), texture='fur')
 HAIR = material('Silver_beard', (.91, .90, .85), texture='fur')
 SKIN = material('Warm_skin', (.78, .44, .29), .58)
-ROSY = material('Rosy_cheeks', (.69, .235, .18), .57)
+ROSY = material('Rosy_cheeks', (.72, .32, .25), .57)
 LEATHER = material('Brown_leather', (.068, .030, .017), texture='leather')
 SOLE = material('Dark_soles_and_belt', (.021, .013, .009), .6)
 BRASS = material('Aged_brass', (.65, .39, .12), texture='brass')
 GOLD = material('Polished_brass_edges', (.78, .51, .19), .25, .85)
-WHITE = material('Eye_white_and_teeth', (.96, .925, .84), .3)
+WHITE = material('Soft_eye_whites', (.96, .925, .84), .3)
 IRIS = material('Hazel_eyes', (.16, .065, .025), .3)
 BLACK = material('Pupils', (.006, .003, .002), .2)
 MOUTH = material('Mouth_interior', (.085, .010, .007), .8)
@@ -127,6 +127,24 @@ LIP = material('Warm_lips', (.48, .14, .11), .6)
 COFFEE = material('Milky_coffee', (.43, .215, .078), .25)
 GLASS = material('Clear_glass', (.45, .57, .62), .10, alpha=.14)
 STITCH = material('Leather_stitching', (.25, .14, .065), .75)
+STEAM = material('Coffee_aroma', (.63, .59, .54), .9, alpha=.18)
+FACE = material('Smiling_face_skin', (.78, .44, .29), .6)
+# A continuous, soft blush across the cheeks, rather than separate pink discs.
+y, x = np.mgrid[0:512, 0:512].astype(float) / 511
+face_x=(x-.5)*.354
+face_z=(y-.5)*.376+1.727
+blush=(np.exp(-((face_x-.105)/.055)**2-((face_z-1.720)/.042)**2)+
+       np.exp(-((face_x+.105)/.055)**2-((face_z-1.720)/.042)**2))*.40
+skin_linear=np.array((.78,.44,.29))[None,None,:]
+rosy_linear=np.array((.78,.28,.235))[None,None,:]
+face_linear=skin_linear*(1-blush[:,:,None])+rosy_linear*blush[:,:,None]
+face_srgb=np.where(face_linear<=.0031308,face_linear*12.92,1.055*face_linear**(1/2.4)-.055)
+face_image=image_file('Santa01_soft_blush',face_srgb)
+face_material=bpy.data.materials[FACE]
+face_tex=face_material.node_tree.nodes.new('ShaderNodeTexImage')
+face_tex.image=face_image
+face_material.node_tree.links.new(face_tex.outputs['Color'],face_material.node_tree.nodes['Principled BSDF'].inputs['Base Color'])
+
 
 # -------------------- skeleton and prop anchors
 CUP = Vector((.15, -.48, 1.12))
@@ -156,6 +174,7 @@ BONES = [
  ('kettle',KETTLE,KETTLE+Vector((0,0,.12)),'root'),
  ('cup',CUP,CUP+Vector((0,0,.12)),'root'),
  ('liquid',CUP+Vector((0,0,-.075)),CUP+Vector((0,0,.025)),'cup'),
+ ('aroma',CUP+Vector((0,0,.09)),CUP+Vector((0,0,.19)),'cup'),
 ]
 POUR_GRIP = Vector((-.18, -.49, 1.73))
 POUR_ROT = Matrix.Rotation(math.radians(25), 3, 'Y')
@@ -210,6 +229,12 @@ def ellipsoid(c, r, mat, bones='head', seg=24, rings=14, direction=None, euler=N
         for v in verts:
             normal=(v.co-Vector(c)).normalized()
             v.co+=normal*rng.uniform(-fuzz,fuzz)
+    if mat == FACE:
+        faces={face for v in verts for face in v.link_faces}
+        for face in faces:
+            for loop in face.loops:
+                co=loop.vert.co
+                loop[UV].uv=((co.x/.177+1)*.5,(co.z-1.727)/.376+.5)
     finish(verts,mat,bones)
 
 def uv_face(verts, coords):
@@ -337,30 +362,45 @@ for sign,side in ((1,'L'),(-1,'R')):
     tube(p,[.004]*5,GOLD,f'foot.{side}',sides=6,sub=1)
 
 # -------------------- face, beard, glasses, brows and drooping cap
-ellipsoid((0,.012,1.727),(.177,.153,.188),SKIN,seg=48,rings=32)
+ellipsoid((0,.012,1.727),(.177,.153,.188),FACE,seg=48,rings=32)
 for sign in (-1,1):
     ellipsoid((sign*.17,.012,1.735),(.033,.027,.052),SKIN,seg=20,rings=14)
     ellipsoid((sign*.183,-.010,1.734),(.016,.012,.031),ROSY,seg=16,rings=10)
-    ellipsoid((sign*.108,-.114,1.716),(.056,.028,.035),ROSY,seg=24,rings=14)
-    ellipsoid((sign*.068,-.119,1.790),(.037,.023,.038),WHITE,seg=28,rings=18)
-    ellipsoid((sign*.061,-.141,1.791),(.017,.009,.022),IRIS,seg=24,rings=14)
-    ellipsoid((sign*.061,-.149,1.792),(.009,.005,.014),BLACK,seg=20,rings=12)
-    ellipsoid((sign*.061-.006,-.153,1.803),(.005,.003,.006),WHITE,seg=12,rings=8)
-    # Lower eyelid and smiling eye creases.
-    tube([(sign*.035,-.128,1.774),(sign*.067,-.139,1.756),(sign*.100,-.12,1.770)],
-         [.004,.005,.003],SKIN,sides=8,sub=3)
-    tube([(sign*.027,-.106,1.841),(sign*.055,-.122,1.852),(sign*.082,-.119,1.847),(sign*.106,-.1,1.833)],
-         [.008,.014,.013,.003],HAIR,sides=9,sub=3)
+    ellipsoid((sign*.104,-.102,1.721),(.059,.036,.041),FACE,seg=28,rings=18)
+    ellipsoid((sign*.068,-.119,1.787),(.035,.018,.029),WHITE,seg=28,rings=18)
+    ellipsoid((sign*.063,-.137,1.790),(.017,.008,.020),IRIS,seg=24,rings=14)
+    ellipsoid((sign*.063,-.144,1.791),(.009,.004,.012),BLACK,seg=20,rings=12)
+    ellipsoid((sign*.063-.005,-.148,1.800),(.0045,.0025,.005),WHITE,seg=12,rings=8)
+    # Relaxed upper lids, raised smile lines, and softly arched brows.
+    tube([(sign*.035,-.127,1.777),(sign*.067,-.140,1.768),(sign*.100,-.119,1.778)],
+         [.004,.006,.0035],SKIN,sides=8,sub=4)
+    tube([(sign*.036,-.126,1.796),(sign*.065,-.137,1.812),(sign*.096,-.116,1.801)],
+         [.0035,.005,.003],SKIN,sides=8,sub=4)
+    tube([(sign*.028,-.107,1.827),(sign*.055,-.124,1.838),(sign*.082,-.119,1.835),(sign*.106,-.100,1.822)],
+         [.006,.012,.010,.0025],HAIR,sides=9,sub=3)
+    tube([(sign*.106,-.112,1.777),(sign*.126,-.097,1.774),(sign*.137,-.085,1.780)],
+         [.002,.0025,.001],SKIN,sides=6,sub=3)
     # Round wire spectacles, open lenses to avoid overlapping transparent surfaces.
     torus((sign*.069,-.153,1.787),(0,1,0),.047,.0022,GOLD,sides=48,cross=6,depth=.039)
     tube([(sign*.115,-.147,1.792),(sign*.169,-.08,1.798),(sign*.179,.01,1.783)],
          [.0022]*3,GOLD,sides=6,sub=3)
 tube([(-.024,-.157,1.797),(0,-.168,1.803),(.024,-.157,1.797)],[.0022]*3,GOLD,sides=6,sub=3)
 ellipsoid((0,-.153,1.731),(.048,.041,.040),ROSY,seg=32,rings=20)
-ellipsoid((0,-.159,1.649),(.065,.025,.047),LIP,seg=32,rings=18)
-ellipsoid((0,-.178,1.651),(.054,.012,.035),MOUTH,seg=32,rings=18)
-ellipsoid((0,-.187,1.628),(.033,.004,.009),LIP,seg=20,rings=10)
-ellipsoid((0,-.189,1.672),(.033,.004,.008),WHITE,seg=20,rings=10)
+# Closed smile: a softly rounded muzzle and a fine, upward-curving lip seam.
+ellipsoid((0,-.147,1.659),(.067,.024,.034),FACE,seg=32,rings=20)
+smile=[]
+for i in range(13):
+    x=-.054+i*.108/12
+    z=1.649+.018*(abs(x)/.054)**1.7
+    y=-.147-.024*math.sqrt(max(.04,1-(x/.067)**2-((z-1.659)/.034)**2))-.0015
+    smile.append((x,y,z))
+tube(smile,[.0018]+[.0025]*11+[.0018],LIP,sides=8,sub=2)
+# A shallow lower lip and cheek dimples reinforce the smile without an opening.
+lower=[(x,y+.0007,z-.004) for x,y,z in smile[2:-2]]
+tube(lower,[.0025]*len(lower),SKIN,sides=8,sub=2)
+for sign in (-1,1):
+    tube([(sign*.052,-.164,1.665),(sign*.057,-.157,1.670),(sign*.059,-.151,1.674)],
+         [.0015,.002,.0008],LIP,sides=6,sub=2)
 # A shaped beard underlay with layered wavy locks following its silhouette.
 lathe((0,0,0),[(1.27,.012,-.295),(1.30,.055,-.27),(1.37,.12,-.23),(1.47,.18,-.15),
       (1.57,.207,-.075),(1.65,.203,.0),(1.70,.17,.028)],HAIR,'head',sides=48,ellipse=.73)
@@ -384,7 +424,7 @@ for i in range(165):
     radius=rng.uniform(.005,.010)
     tube(points,[radius*.5,radius,radius,radius*.95,radius*.9,radius*.8,
                  radius*.7,radius*.5,radius*.3,.0007],HAIR,sides=7,sub=1)
-# Swept, curling moustache with individual clumps, free of the open mouth.
+# Swept, curling moustache with individual clumps, framing the closed smile.
 for sign in (-1,1):
     for i in range(9):
         z=1.694+(i-4)*.0018
@@ -483,6 +523,16 @@ end=CUP+Vector((0,0,.048))
 tube([STREAM_START,STREAM_START+Vector((.001,.002,-.065)),end+Vector((.001,0,.045)),end],
      [.0065,.0075,.007,.006],COFFEE,'stream',sides=9,sub=4)
 torus(end,(0,0,1),.018,.0024,COFFEE,'stream',sides=24,cross=5)
+# Three faint, curved wisps travel with the upright cup during the aroma gesture.
+for i in range(3):
+    points=[]
+    for j in range(10):
+        t=j/9
+        points.append(CUP+Vector(((i-1)*.018+.009*math.sin(t*TAU+i),
+                                  -.012+.005*math.cos(t*TAU+i),.092+.13*t)))
+    tube(points,[.0012,.0018,.0022,.0024,.0024,.0022,.002,.0016,.001,.0003],
+         STEAM,'aroma',sides=6,sub=1)
+
 
 # -------------------- object and skin creation
 for vertex in bm.verts:
@@ -527,13 +577,13 @@ def orient_segment(name,start,end):
 mod.show_viewport=False
 for frame in range(1,301):
     scene.frame_set(frame)
-    # Approach -> pour -> lower kettle -> raise glass -> sip -> return.
+    # Approach -> pour -> lower kettle -> raise upright glass -> smell -> return.
     kettle_amount=ramp(frame,24,60)*(1-ramp(frame,132,168))
     cup_amount=ramp(frame,168,204)*(1-ramp(frame,240,276))
     kpos=KETTLE.lerp(POUR_GRIP,kettle_amount)
     krot=Matrix.Rotation(math.radians(25)*kettle_amount,3,'Y')
-    cpos=CUP.lerp(Vector((.015,-.286,1.58)),cup_amount)
-    crot=Matrix.Rotation(math.radians(-23)*cup_amount,3,'X')
+    cpos=CUP.lerp(Vector((.030,-.355,1.590)),cup_amount)
+    crot=Matrix.Identity(3)
     rigid_pose('kettle',kpos,krot)
     rigid_pose('cup',cpos,crot)
     for side,pos,rot,origin in (('R',kpos,krot,KETTLE),('L',cpos,crot,CUP)):
@@ -544,21 +594,28 @@ for frame in range(1,301):
         orient_segment(f'forearm.{side}',elbow,wrist)
         rigid_pose(f'hand.{side}',wrist,rot)
     head=rig.pose.bones['head']
-    head.rotation_quaternion=Quaternion((1,0,0), math.radians(4)*kettle_amount-math.radians(4)*cup_amount)
+    inhale=math.sin(math.pi*max(0,min(1,(frame-204)/36)))
+    head.rotation_quaternion=Quaternion((1,0,0), math.radians(4)*kettle_amount+math.radians(7+1.5*inhale)*cup_amount)
+    warmth=ramp(frame,128,148)*(1-ramp(frame,270,298))
+    aroma=rig.pose.bones['aroma']
+    aroma.scale=(max(.01,warmth),max(.01,warmth*(1+.06*math.sin(frame*.12))),max(.01,warmth))
+    aroma.rotation_quaternion=Quaternion((0,1,0),math.radians(5)*math.sin(frame*.08)*warmth)
     flow=ramp(frame,62,66)*(1-ramp(frame,125,129))
-    level=.42+.58*ramp(frame,66,125)-.58*ramp(frame,211,239)
+    # Keep the coffee full while he smells it. Reset only in the final rest
+    # transition so the repeating pour starts with space in the cup again.
+    level=.42+.58*ramp(frame,66,125)-.58*ramp(frame,276,300)
     # The stream follows the rising coffee surface during the pour.
     surface=CUP.z-.075+.127*level
     length=(STREAM_START.z-surface)/(STREAM_START.z-end.z)
     rig.pose.bones['stream'].scale=(max(.01,flow),max(.01,flow*length),max(.01,flow))
     rig.pose.bones['liquid'].scale=(1,level,1)
-    for name in ['kettle','cup','upper_arm.L','forearm.L','hand.L','upper_arm.R','forearm.R','hand.R','head','stream','liquid']:
+    for name in ['kettle','cup','upper_arm.L','forearm.L','hand.L','upper_arm.R','forearm.R','hand.R','head','stream','liquid','aroma']:
         pb=rig.pose.bones[name]
         pb.keyframe_insert('location',frame=frame)
         pb.keyframe_insert('rotation_quaternion',frame=frame)
         pb.keyframe_insert('scale',frame=frame)
 mod.show_viewport=True
-rig.animation_data.action.name='Santa01_Pour_and_Drink'
+rig.animation_data.action.name='Santa01_Pour_and_Smell'
 for fc in rig.animation_data.action.fcurves:
     for k in fc.keyframe_points: k.interpolation='LINEAR'
 rig.animation_data.action.use_fake_user=True
@@ -598,7 +655,18 @@ bpy.ops.wm.save_as_mainfile(filepath=os.path.join(HERE,VERSION+'.blend'),compres
 print('[model] Saved packed Blender scene',flush=True)
 if PREVIEWS:
     os.makedirs(PREVIEWS,exist_ok=True)
-    for name,frame in [('ready',1),('pour',92),('drink',222)]:
+    original_camera=cam.matrix_world.copy()
+    original_lens=cam.data.lens
+    cam.location=(-.20,-1.60,1.85)
+    cam.rotation_euler=(Vector((0,-.04,1.75))-cam.location).to_track_quat('-Z','Y').to_euler()
+    cam.data.lens=78
+    scene.render.resolution_x=scene.render.resolution_y=600
+    scene.render.filepath=os.path.join(PREVIEWS,VERSION+'-face.png')
+    bpy.ops.render.render(write_still=True)
+    cam.matrix_world=original_camera
+    cam.data.lens=original_lens
+    scene.render.resolution_x,scene.render.resolution_y=800,1000
+    for name,frame in [('ready',1),('pour',92),('aroma',222)]:
         scene.frame_set(frame)
         scene.render.filepath=os.path.join(PREVIEWS,VERSION+'-'+name+'.png')
         bpy.ops.render.render(write_still=True)
