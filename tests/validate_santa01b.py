@@ -68,6 +68,20 @@ for frame in range(1,301):
         assert abs(endpoint.z-(1.045+.127*level)) < 1e-4, (frame,'stream misses chai surface')
     if frame in (1,300): loop.append([pb.matrix.copy() for pb in rig.pose.bones])
 assert max(abs(a[i][j]-b[i][j]) for a,b in zip(*loop) for i in range(4) for j in range(4)) < 1e-4
+# The eyes track the glass: each gaze points closer to it than the face does, and it moves when the glass is raised.
+gazes={}
+for frame in (1,92,222):
+    scene.frame_set(frame)
+    glass=rig.pose.bones['cup'].head+Vector((0,0,.06))
+    head=rig.pose.bones['head']
+    face=(head.matrix.to_3x3() @ rig.data.bones['head'].matrix_local.to_3x3().inverted() @ Vector((0,-1,0))).normalized()
+    for side in 'LR':
+        eye=rig.pose.bones['eye.'+side]
+        gaze=(eye.tail-eye.head).normalized()
+        to_glass=(glass-eye.head).normalized()
+        assert gaze.angle(to_glass) < face.angle(to_glass)-.1, (frame,side,'eye is not looking at the glass')
+        gazes[frame,side]=gaze
+assert all(gazes[1,s].angle(gazes[222,s]) > .15 for s in 'LR'), 'Eyes do not follow the raised glass'
 # Skinning itself must stay finite, including a nearly collapsed liquid stream.
 for frame in (1,42,62,92,128,160,190,222,258,300):
     scene.frame_set(frame)
