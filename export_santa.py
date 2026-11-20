@@ -1,12 +1,15 @@
 """Export a numbered Santa without changing any other version.
 
 blender -b santa01.blend --python-exit-code 1 -P export_santa.py -- santa01
+blender -b santa01b.blend --python-exit-code 1 -P export_santa.py -- santa01b
+
+Editions after santa01 embed JPEG textures in the GLB to stay within the download budget.
 """
 import bpy, os, re, sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 args = sys.argv[sys.argv.index('--') + 1:] if '--' in sys.argv else []
-if len(args) != 1 or not re.fullmatch(r'santa[0-9]{2,}', args[0]):
-    raise ValueError('Pass a numbered version after --, for example santa01')
+if len(args) != 1 or not re.fullmatch(r'santa[0-9]{2,}[a-z]?', args[0]):
+    raise ValueError('Pass a numbered version after --, for example santa01 or santa01b')
 version = args[0]
 name = version.capitalize()
 rig = bpy.data.objects[name + '_Rig']
@@ -25,6 +28,7 @@ bpy.ops.export_scene.gltf(
     export_format='GLB', use_selection=True, export_apply=False,
     export_skins=True, export_animations=True, export_frame_range=True,
     export_yup=True, export_cameras=False, export_lights=False,
+    **({} if version == 'santa01' else dict(export_image_format='JPEG', export_image_quality=88)),
 )
 kwargs = dict(
     filepath=os.path.join(out, version + '.usdz'),
