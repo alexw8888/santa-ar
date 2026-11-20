@@ -4,7 +4,6 @@ Each version has its own public HTML page and model assets. GitHub Pages publish
 
 | Version | Public page | Animation |
 | --- | --- | --- |
-| Boy | [index.html](https://alexw8888.github.io/santa-ar/) | Waving |
 | Santa 01 | [santa01.html](https://alexw8888.github.io/santa-ar/santa01.html) | Pour chai from a brass kettle while watching the glass, then lift the upright glass to enjoy the aroma |
 | Santa 02 | [santa02.html](https://alexw8888.github.io/santa-ar/santa02.html) | Lift an armful of Aisle24 groceries, glance down and settle them back into both hands |
 
@@ -66,16 +65,5 @@ blender -b --python-exit-code 1 -P tests/validate_santa02.py
 ```
 
 The build writes the editable scene, three preview PNGs and the viewer poster. The exporter writes the GLB and USDZ used by `docs/santa02.html`.
-
-## Original boy
-
-- `build_boy.py` builds `boy_rigged.blend`.
-- `export_web.py` exports `docs/boy.glb` and `docs/boy.usdz`.
-- `rest.png`, `wave.png`, and `pose.png` preview the boy.
-
-```sh
-blender -b --factory-startup --python-exit-code 1 -P build_boy.py -- .
-blender -b boy_rigged.blend --python-exit-code 1 -P export_web.py
-```
 
 Commit the generated models, page, poster, and previews to `main` to publish. No backend or custom build service is required.
