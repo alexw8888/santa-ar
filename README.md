@@ -44,7 +44,7 @@ A closer match to the reference photo, built by `build_santa01b.py` with the sam
 - The fur trim is plush, with soft clumps and fibers instead of spiky dots; the pompom is round and fluffy.
 - A portlier build: a rounder belly pushed forward over the belt, broader shoulders and thicker sleeves and trousers.
 - A wide stance: the legs splay out from the hips and the boots turn outward, as in the photo.
-- He watches the glass, as in the photo: his eyes glance down toward it and his head turns and nods to follow it through the pour and the aroma gesture.
+- He watches the glass, as in the photo: each eye has its own bone (parented to the head) that aims the iris at the glass every frame, and his head turns and nods to follow it through the pour and the aroma gesture.
 - The face grins with a broad open mouth (lips, upper teeth, tongue) whose corners lift into the cheeks, smile creases, wide eyes, bushy arched eyebrows, a bigger red nose and round rosy cheeks.
 - The beard is wider and fuller, made of wavy, flattened locks; the moustache sweeps up into the cheeks; sideburns join the hat to the beard.
 - Worn mid-brown work boots with thick soles, heels, toe-cap seams and brass ankle buckles; a wide leather belt with a large brass buckle.

@@ -277,7 +277,13 @@ for side, sign in (('L', 1), ('R', -1)):
               (f'shin.{side}', (sign * .205, 0, .46), (sign * .225, 0, .12), f'thigh.{side}'),
               (f'foot.{side}', (sign * .225, 0, .12),
                (sign * (.225 + .17 * math.sin(math.radians(14))), -.17 * math.cos(math.radians(14)), .06), f'shin.{side}')]
-SEG = {name: (Vector(h), Vector(t)) for name, h, t, parent in BONES}
+# Eye bones pivot a little behind each iris (in the head's widened space, see the x1.10/y1.06 scale
+# below) and point forward, so rotating them slides the iris across the eye white toward a target.
+HEAD_SCALE = Vector((1.10, 1.06, 1))
+EYE_PIVOTS = {side: Vector((sign * .062, -.095, 1.789)) * HEAD_SCALE for side, sign in (('L', 1), ('R', -1))}
+for side, pivot in EYE_PIVOTS.items():
+    BONES.append((f'eye.{side}', pivot, pivot + Vector((0, -.04, 0)), 'head'))
+SEG ={name: (Vector(h), Vector(t)) for name, h, t, parent in BONES}
 GROUPS = {name: i for i, (name, *_) in enumerate(BONES)}
 bm = bmesh.new()
 DL = bm.verts.layers.deform.verify()
@@ -530,11 +536,11 @@ for sign in (-1, 1):
     ellipsoid((sign * .108, -.102, 1.720), (.066, .044, .049), FACE, seg=32, rings=20)
     # Wide-open, happy eyes.
     ellipsoid((sign * .066, -.117, 1.788), (.037, .021, .034), WHITE, seg=28, rings=18)
-    # Irises glance down and to his left, toward the glass in his hand.
-    gx, gy, gz = sign * .062 + .009, .0016, -.008
-    ellipsoid((gx, -.135 + gy, 1.789 + gz), (.020, .009, .023), IRIS, seg=24, rings=14)
-    ellipsoid((gx, -.142 + gy, 1.790 + gz), (.010, .004, .012), BLACK, seg=20, rings=12)
-    ellipsoid((gx - .006, -.146 + gy, 1.800 + gz), (.005, .0025, .006), WHITE, seg=12, rings=8)
+    # Irises are modelled looking straight ahead; their eye bones aim them at the glass each frame.
+    eye = 'eye.L' if sign > 0 else 'eye.R'
+    ellipsoid((sign * .062, -.135, 1.789), (.020, .009, .023), IRIS, eye, seg=24, rings=14)
+    ellipsoid((sign * .062, -.142, 1.790), (.010, .004, .012), BLACK, eye, seg=20, rings=12)
+    ellipsoid((sign * .062 - .006, -.146, 1.800), (.005, .0025, .006), WHITE, eye, seg=12, rings=8)
     # Raised upper lids, smile creases under the eyes and crow's feet.
     tube([(sign * .030, -.126, 1.806), (sign * .066, -.140, 1.825), (sign * .102, -.118, 1.809)],
          [.004, .0065, .0035], SKIN, sides=8, sub=4)
@@ -787,10 +793,11 @@ for i in range(3):
 
 
 # -------------------- object and skin creation
+head_groups = [GROUPS[name] for name in ('head', 'eye.L', 'eye.R')]
 for vertex in bm.verts:
-    if vertex[DL].get(GROUPS['head'], 0) > .99:
-        vertex.co.x *= 1.10
-        vertex.co.y *= 1.06
+    if sum(vertex[DL].get(g, 0) for g in head_groups) > .99:
+        vertex.co.x *= HEAD_SCALE.x
+        vertex.co.y *= HEAD_SCALE.y
 bmesh.ops.recalc_face_normals(bm, faces=list(bm.faces))
 # The mouth cavity is an open bowl, so recalc can't tell its inside from its outside. AR Quick Look
 # (RealityKit) ignores doubleSided and culls back faces, so make the cavity face the viewer (-y).
@@ -841,16 +848,33 @@ def action_fcurves(obj):
     return action_get_channelbag_for_slot(action, obj.animation_data.action_slot).fcurves
 
 EYES = Vector((0, -.13, 1.79))
+GAZE = Vector((0, 0, .06))  # look at the chai surface/rim, just above the glass's bone origin
+EYE_LIMIT = math.radians(19)  # keeps the iris on the eye white
 def look_at_glass(glass, extra_pitch=0):
     """Head turn and nod that follow the glass, as in the photo (the eyes do the rest)."""
-    d = glass + Vector((0, 0, .06)) - EYES
+    d = glass + GAZE - EYES
     yaw = .6 * math.atan2(d.x, -d.y)
     pitch = .35 * math.atan2(-d.z, math.hypot(d.x, d.y)) + extra_pitch
     # Bone-local Y is the neck axis (turn); local X nods the face forward.
     return Quaternion((0, 1, 0), yaw) @ Quaternion((1, 0, 0), pitch)
 
+def aim_eyes(target):
+    """Rotate each eye about its pivot, inside the posed head, so the iris looks at `target`."""
+    bpy.context.view_layer.update()
+    head = rig.pose.bones['head']
+    head_deform = head.matrix @ rig.data.bones['head'].matrix_local.inverted()
+    local_target = head_deform.inverted() @ target
+    for side, pivot in EYE_PIVOTS.items():
+        turn = Vector((0, -1, 0)).rotation_difference((local_target - pivot).normalized())
+        if turn.angle > EYE_LIMIT:
+            turn = Quaternion(turn.axis, EYE_LIMIT)
+        deform = Matrix.Translation(pivot) @ turn.to_matrix().to_4x4() @ Matrix.Translation(-pivot)
+        rig.pose.bones[f'eye.{side}'].matrix = head_deform @ deform @ rig.data.bones[f'eye.{side}'].matrix_local
+    bpy.context.view_layer.update()
+
 if QUICK:
     rig.pose.bones['head'].rotation_quaternion = look_at_glass(CUP)
+    aim_eyes(CUP + GAZE)
 if not QUICK:
     mod.show_viewport = False
     for frame in range(1, 301):
@@ -872,6 +896,7 @@ if not QUICK:
             rigid_pose(f'hand.{side}', wrist, rot)
         inhale = math.sin(math.pi * max(0, min(1, (frame - 204) / 36)))
         rig.pose.bones['head'].rotation_quaternion = look_at_glass(cpos, math.radians(1.5 * inhale) * cup_amount)
+        aim_eyes(cpos + GAZE)
         warmth = ramp(frame, 128, 148) * (1 - ramp(frame, 270, 298))
         aroma = rig.pose.bones['aroma']
         aroma.scale = (max(.01, warmth), max(.01, warmth * (1 + .06 * math.sin(frame * .12))), max(.01, warmth))
@@ -883,7 +908,7 @@ if not QUICK:
         length = (STREAM_START.z - surface) / (STREAM_START.z - end.z)
         rig.pose.bones['stream'].scale = (max(.01, flow), max(.01, flow * length), max(.01, flow))
         rig.pose.bones['liquid'].scale = (1, level, 1)
-        for name in ['kettle', 'cup', 'upper_arm.L', 'forearm.L', 'hand.L', 'upper_arm.R', 'forearm.R', 'hand.R', 'head', 'stream', 'liquid', 'aroma']:
+        for name in ['kettle', 'cup', 'upper_arm.L', 'forearm.L', 'hand.L', 'upper_arm.R', 'forearm.R', 'hand.R', 'head', 'eye.L', 'eye.R', 'stream', 'liquid', 'aroma']:
             pb = rig.pose.bones[name]
             pb.keyframe_insert('location', frame=frame)
             pb.keyframe_insert('rotation_quaternion', frame=frame)
