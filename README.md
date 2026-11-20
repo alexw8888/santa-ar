@@ -6,6 +6,7 @@ Each version has its own public HTML page and model assets. GitHub Pages publish
 | --- | --- | --- |
 | Boy | [index.html](https://alexw8888.github.io/santa-ar/) | Waving |
 | Santa 01 | [santa01.html](https://alexw8888.github.io/santa-ar/santa01.html) | Pour chai from a brass kettle while watching the glass, then lift the upright glass to enjoy the aroma |
+| Santa 02 | [santa02.html](https://alexw8888.github.io/santa-ar/santa02.html) | Lift an armful of Aisle24 groceries, glance down and settle them back into both hands |
 
 Open a page in Chrome on Android or Safari on iPhone/iPad. Each page attempts to launch AR automatically after the model loads. Browsers that require a user gesture keep **View in your space** as a fallback. Desktop browsers show the interactive 3D model.
 
@@ -51,6 +52,20 @@ The build also runs with Blender as a Python module (`pip install bpy`): `python
 Physical phone AR performance and native viewer behavior should also be checked on the target devices.
 
 Create later editions as separate numbered pages and asset sets: `santa02.html`, `santa02.glb`, `santa02.usdz`, and so on. Give each edition a matching Blender scene/rig name and its own animation. Never overwrite an earlier edition’s assets when adding a new action. The versioned exporter requires an explicit name to avoid accidentally replacing another edition.
+
+## Santa 02
+
+Modelled on `photos/02 Aisle24 Santa.jpg`. Santa cradles a scored baguette, spinach, tomatoes, stacked yogurt cups, bagged fruit, flour, milk and snacks. The open canvas Aisle24 tote stands beside his right boot. Both hands follow the groceries through a five-second loop.
+
+`build_santa02.py` uses the packed `santa01.blend` made by `build_santa01.py` as its character source. The grocery geometry, materials, pose and animation are built specifically for this edition. Run from the repository root:
+
+```sh
+blender -b --factory-startup --python-exit-code 1 -P build_santa02.py -- previews
+blender -b santa02.blend --python-exit-code 1 -P export_santa.py -- santa02
+blender -b --python-exit-code 1 -P tests/validate_santa02.py
+```
+
+The build writes the editable scene, three preview PNGs and the viewer poster. The exporter writes the GLB and USDZ used by `docs/santa02.html`.
 
 ## Original boy
 
