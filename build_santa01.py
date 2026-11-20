@@ -26,6 +26,7 @@ scene.render.fps = 24
 scene.frame_start, scene.frame_end = 1, 300
 
 # -------------------- reproducible, image-based PBR materials (exportable to AR)
+FABRIC_TILE_METERS = .36
 texture_dir = os.path.join(HERE, 'generated', VERSION)
 os.makedirs(texture_dir, exist_ok=True)
 
@@ -46,16 +47,39 @@ def image_file(name, data, color_space='sRGB'):
     return im
 
 
+def velvet_maps(name, size=1024):
+    """Bake portable fiber normals and roughness from the generated velvet swatch."""
+    source_path=os.path.join(HERE,'assets','textures','santa01-velvet-source.png')
+    source=bpy.data.images.load(source_path,check_existing=False)
+    source.colorspace_settings.name='Non-Color'
+    # The original source is retained; the runtime material uses 1K maps.
+    source.scale(size,size)
+    pixels=np.empty(size*size*4,dtype=np.float32)
+    source.pixels.foreach_get(pixels)
+    rgb=pixels.reshape(size,size,4)[::-1,:,:3].copy()
+    bpy.data.images.remove(source)
+    luminance=rgb[:,:,0]*.65+rgb[:,:,1]*.25+rgb[:,:,2]*.10
+    low,high=np.percentile(luminance,(3,97))
+    nap=np.clip((luminance-low)/max(high-low,.01),0,1)
+    # Velvet pile scatters light through many tiny, irregular fiber normals.
+    height=nap*.12
+    dy,dx=np.gradient(height)
+    normal=np.stack((-dx*20,-dy*20,np.ones_like(dx)),axis=-1)
+    normal/=np.linalg.norm(normal,axis=-1)[:,:,None]
+    roughness=np.clip(.94-.19*nap,.72,.96)
+    orm=np.stack((.96+.04*nap,roughness,np.zeros_like(nap)),axis=-1)
+    return (image_file(name+'_color',rgb),
+            image_file(name+'_normal',normal*.5+.5,'Non-Color'),
+            image_file(name+'_orm',orm,'Non-Color'))
+
+
 def pbr_maps(name, color, kind, size=512):
+    if kind == 'cloth':
+        return velvet_maps(name)
     gen = np.random.default_rng(31 + len(name))
     y, x = np.mgrid[0:size, 0:size].astype(float) / size
     micro = gen.normal(0, 1, (size, size))
-    if kind == 'cloth':
-        weave = np.sin(x * TAU * 128) * np.sin(y * TAU * 128)
-        height = .012 * micro + .025 * weave
-        variation = .96 + .045 * micro + .025 * weave
-        rough, metallic = .80, 0
-    elif kind == 'fur':
+    if kind == 'fur':
         strands = np.sin(TAU * (x * 185 + .8 * np.sin(y * TAU * 3)))
         height = .024 * strands + .008 * micro
         variation = .94 + .035 * strands + .018 * micro
@@ -100,13 +124,21 @@ def material(name, color, rough=.5, metal=0, texture=None, alpha=1):
             return node.outputs['Color']
         nt.links.new(tex(color_im), bs.inputs['Base Color'])
         normal = nt.nodes.new('ShaderNodeNormalMap')
-        normal.inputs['Strength'].default_value = .20 if texture == 'fur' else .3
+        normal.inputs['Strength'].default_value = .90 if texture == 'cloth' else (.20 if texture == 'fur' else .3)
         nt.links.new(tex(normal_im), normal.inputs['Color'])
         nt.links.new(normal.outputs['Normal'], bs.inputs['Normal'])
         separate = nt.nodes.new('ShaderNodeSeparateColor')
         nt.links.new(tex(orm_im), separate.inputs['Color'])
         nt.links.new(separate.outputs['Green'], bs.inputs['Roughness'])
         nt.links.new(separate.outputs['Blue'], bs.inputs['Metallic'])
+        if texture == 'cloth':
+            # Core color/normal/roughness maps work in both AR formats; sheen
+            # adds a soft fabric edge response in viewers that support it.
+            bs.inputs['Specular IOR Level'].default_value=.25
+            bs.inputs['Sheen Weight'].default_value=.38
+            bs.inputs['Sheen Roughness'].default_value=.8
+            bs.inputs['Sheen Tint'].default_value=(.65,.13,.15,1)
+
     MATS.append(mat)
     return mat.name
 
@@ -242,7 +274,7 @@ def uv_face(verts, coords):
     for loop,uv in zip(f.loops,coords): loop[UV].uv=uv
     return f
 
-def tube(points,radii,mat,bones='head',sides=10,sub=2,cap=True,noise=0):
+def tube(points,radii,mat,bones='head',sides=10,sub=2,cap=True,noise=0,cloth_folds=0):
     pts=[Vector(p) for p in points]; P=[]; R=[]
     for i in range(len(pts)-1):
         for j in range(sub):
@@ -258,14 +290,20 @@ def tube(points,radii,mat,bones='head',sides=10,sub=2,cap=True,noise=0):
         ring=[]
         for j in range(sides):
             a=TAU*j/sides; rr=r*(1+rng.uniform(-noise,noise))
+            progress=i/max(1,len(P)-1)
+            rr+=cloth_folds*math.exp(-((progress-.53)/.24)**2)*math.cos(progress*TAU*5+1.3*math.sin(a*2))
             ring.append(bm.verts.new(p+(math.cos(a)*n+math.sin(a)*b)*rr))
         rings.append(ring)
         if i: lengths.append(lengths[-1]+(P[i]-P[i-1]).length)
     total=max(lengths[-1],1e-5)
+    def tube_uv(i,j):
+        if mat==RED:
+            return (j/sides*TAU*R[i]/FABRIC_TILE_METERS,lengths[i]/FABRIC_TILE_METERS)
+        return (j/sides,lengths[i]/total)
     for i,(a,b) in enumerate(zip(rings,rings[1:])):
         for j in range(sides):
             uv_face((a[j],a[(j+1)%sides],b[(j+1)%sides],b[j]),
-                    ((j/sides,lengths[i]/total),((j+1)/sides,lengths[i]/total),((j+1)/sides,lengths[i+1]/total),(j/sides,lengths[i+1]/total)))
+                    (tube_uv(i,j),tube_uv(i,j+1),tube_uv(i+1,j+1),tube_uv(i+1,j)))
     if cap:
         bm.faces.new(tuple(reversed(rings[0]))); bm.faces.new(tuple(rings[-1]))
     finish([v for ring in rings for v in ring],mat,bones)
@@ -281,26 +319,46 @@ def torus(c, normal, major, minor, mat,bones='head',depth=None, sides=48, cross=
             v=TAU*j/cross; r=minor+rng.uniform(-fuzz,fuzz)
             ring.append(bm.verts.new(c+rot@(center+r*(radial*math.cos(v)+Vector((0,0,math.sin(v)))))))
         rings.append(ring)
+    major_scale=TAU*major/FABRIC_TILE_METERS if mat==RED else 1
+    minor_scale=TAU*minor/FABRIC_TILE_METERS if mat==RED else 1
     for i in range(sides):
         for j in range(cross):
             uv_face((rings[i][j],rings[(i+1)%sides][j],rings[(i+1)%sides][(j+1)%cross],rings[i][(j+1)%cross]),
-                    ((i/sides,j/cross),((i+1)/sides,j/cross),((i+1)/sides,(j+1)/cross),(i/sides,(j+1)/cross)))
+                    ((i/sides*major_scale,j/cross*minor_scale),((i+1)/sides*major_scale,j/cross*minor_scale),
+                     ((i+1)/sides*major_scale,(j+1)/cross*minor_scale),(i/sides*major_scale,(j+1)/cross*minor_scale)))
     finish([v for ring in rings for v in ring],mat,bones)
 
 def lathe(c, profile, mat,bones, sides=48,ellipse=1,flute=0):
     # profile = (height, radius), optionally with a front/back center offset.
     c=Vector(c); rings=[]
+    if mat==RED:
+        dense=[]
+        for lower,upper in zip(profile,profile[1:]):
+            for step in range(4):
+                t=step/4
+                dense.append(tuple(a*(1-t)+b*t for a,b in zip(lower,upper)))
+        profile=dense+[profile[-1]]
     for i,row in enumerate(profile):
         z,r=row[:2]; offset=row[2] if len(row)>2 else 0
         ring=[]
         for j in range(sides):
             a=TAU*j/sides; rr=r+flute*math.cos(16*a)
+            if mat==RED:
+                rr+=.004*math.cos(a*11+(z-.98)*13+math.sin(a*3))*math.exp(-((z-1.035)/.12)**2)
+                rr+=.0025*math.cos(a*14)*math.exp(-((z-.78)/.055)**2)
             ring.append(bm.verts.new(c+Vector((rr*math.cos(a),rr*ellipse*math.sin(a)+offset,z))))
         rings.append(ring)
+    def lathe_uv(i,j):
+        if mat==RED:
+            radius=profile[i][1]
+            depth=radius*ellipse
+            perimeter=math.pi*(3*(radius+depth)-math.sqrt((3*radius+depth)*(radius+3*depth)))
+            return (j/sides*perimeter/FABRIC_TILE_METERS,(profile[i][0]-profile[0][0])/FABRIC_TILE_METERS)
+        return (j/sides,i/(len(rings)-1))
     for i in range(len(rings)-1):
         for j in range(sides):
             uv_face((rings[i][j],rings[i][(j+1)%sides],rings[i+1][(j+1)%sides],rings[i+1][j]),
-                    ((j/sides,i/(len(rings)-1)),((j+1)/sides,i/(len(rings)-1)),((j+1)/sides,(i+1)/(len(rings)-1)),(j/sides,(i+1)/(len(rings)-1))))
+                    (lathe_uv(i,j),lathe_uv(i,j+1),lathe_uv(i+1,j+1),lathe_uv(i+1,j)))
     bm.faces.new(tuple(reversed(rings[0]))); bm.faces.new(tuple(rings[-1]))
     finish([v for ring in rings for v in ring],mat,bones)
 
@@ -341,7 +399,7 @@ for x in (.115,.15,.185): ellipsoid((x,-.294,.976),(.004,.003,.004),BLACK,['hips
 for sign,side in ((1,'L'),(-1,'R')):
     x=sign*.15
     tube([(x,0,.84),(x,.0,.67),(x,.012,.47),(x,0,.30)],[.13,.125,.108,.095],RED,
-         ['hips',f'thigh.{side}',f'shin.{side}'],sides=24,sub=4,noise=.015)
+         ['hips',f'thigh.{side}',f'shin.{side}'],sides=24,sub=4,noise=.015,cloth_folds=.0025)
     fur_ring((x,0,.305),(0,0,1),.104,.046,f'shin.{side}',tufts=50)
     ellipsoid((x,.01,.17),(.10,.105,.16),LEATHER,f'foot.{side}',seg=28,rings=18)
     ellipsoid((x,-.105,.079),(.12,.205,.074),SOLE,f'foot.{side}',seg=32,rings=14)
@@ -451,7 +509,7 @@ for side in ('L','R'):
     direction=(wrist-elbow).normalized()
     cuff=wrist-direction*.035
     tube([shoulder+(elbow-shoulder)*-.12,shoulder.lerp(elbow,.28),elbow,
-          elbow.lerp(cuff,.55),cuff],[.108,.125,.108,.096,.088],RED,[upper,fore],sides=24,sub=3)
+          elbow.lerp(cuff,.55),cuff],[.108,.125,.108,.096,.088],RED,[upper,fore],sides=24,sub=3,cloth_folds=.0035)
     fur_ring(cuff,direction,.086,.041,fore,tufts=60)
     # A few shallow folds reinforce the elbow silhouette without expensive cloth simulation.
     for offset in (-.025,.015):
@@ -657,6 +715,14 @@ if PREVIEWS:
     os.makedirs(PREVIEWS,exist_ok=True)
     original_camera=cam.matrix_world.copy()
     original_lens=cam.data.lens
+    scene.frame_set(222)
+    cam.location=(.85,-1.35,1.35)
+    cam.rotation_euler=(Vector((.16,-.19,1.18))-cam.location).to_track_quat('-Z','Y').to_euler()
+    cam.data.lens=90
+    scene.render.resolution_x=scene.render.resolution_y=700
+    scene.render.filepath=os.path.join(PREVIEWS,VERSION+'-fabric.png')
+    bpy.ops.render.render(write_still=True)
+    scene.frame_set(1)
     cam.location=(-.20,-1.60,1.85)
     cam.rotation_euler=(Vector((0,-.04,1.75))-cam.location).to_track_quat('-Z','Y').to_euler()
     cam.data.lens=78
