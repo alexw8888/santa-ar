@@ -11,8 +11,10 @@ Open a page in Chrome on Android or Safari on iPhone/iPad. Each page attempts to
 
 ## Santa 01
 
-A reference-inspired, rigged Santa with a warm closed-mouth smile, soft cheek blush, relaxed eyes, a shaped coat, layered beard, fur trim, wire spectacles, sculpted gloves, stitched leather boots, a brass kettle, and a ribbed coffee glass. Image-based color, normal, and roughness/metallic maps supply surface detail. The 12.5-second loop includes a timed coffee stream, a rising coffee level, pouring, a closed-mouth smile, a gentle lean toward the upright glass to smell the coffee, and a return to the initial pose.
+A reference-inspired, rigged Santa with a warm closed-mouth smile, soft cheek blush, relaxed eyes, a shaped coat, layered beard, fur trim, wire spectacles, sculpted gloves, stitched leather boots, a brass kettle, and a ribbed coffee glass. The red garments use a generated photographic velvet swatch with fiber normals, varying roughness, and soft sheen. Fabric UVs use a consistent physical scale; shallow waist and elbow folds add cloth shaping. Core color/normal/roughness maps also support AR viewers that do not render the optional sheen extension. The 12.5-second loop includes a timed coffee stream, a rising coffee level, pouring, a closed-mouth smile, a gentle lean toward the upright glass to smell the coffee, and a return to the initial pose.
 
+- `assets/textures/santa01-velvet-source.png` is the original generated fabric swatch. The build creates optimized runtime maps from it.
+- `previews/santa01-fabric.png` shows the garment material close up.
 - `build_santa01.py` generates `santa01.blend` and packs the textures into it. Temporary texture images in `generated/` are recreated on each build.
 - `export_santa.py` exports the named scene into `docs/santa01.glb` and `docs/santa01.usdz`.
 - `docs/santa01.html` is this version’s viewer; `docs/santa01-poster.webp` is its loading poster.

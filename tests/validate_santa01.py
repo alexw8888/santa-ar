@@ -2,6 +2,7 @@
 blender -b --python-exit-code 1 -P tests/validate_santa01.py
 """
 import bpy, json, math, struct, zipfile
+import numpy as np
 from pathlib import Path
 from mathutils import Vector
 ROOT = Path(__file__).resolve().parents[1]
@@ -13,6 +14,18 @@ mesh.data.calc_loop_triangles()
 assert len(mesh.data.loop_triangles) < 160000, 'Mobile geometry budget exceeded'
 assert all(v.groups and abs(sum(g.weight for g in v.groups)-1) < 1e-4 for v in mesh.data.vertices)
 assert all(im.packed_file for im in bpy.data.images if im.source == 'FILE'), 'Texture is not packed'
+# The garment detail must reach the exported material and repeat at fabric scale.
+cloth=bpy.data.materials['Crimson_velvet']
+cloth_bsdf=cloth.node_tree.nodes.get('Principled BSDF')
+color_image=cloth_bsdf.inputs['Base Color'].links[0].from_node.image
+assert tuple(color_image.size)==(1024,1024), 'Velvet color map is missing or too small'
+assert cloth_bsdf.inputs['Normal'].is_linked
+samples=np.asarray(color_image.pixels[:],dtype=np.float32).reshape(-1,4)[:,0]
+assert np.percentile(samples,95)-np.percentile(samples,5)>.08, 'Fabric is effectively a flat color'
+cloth_index=next(i for i,m in enumerate(mesh.data.materials) if m.name=='Crimson_velvet')
+cloth_u=[mesh.data.uv_layers.active.data[i].uv.x for p in mesh.data.polygons if p.material_index==cloth_index for i in p.loop_indices]
+assert max(cloth_u)-min(cloth_u)>3, 'Fabric UVs are stretched across the entire garment'
+
 assert rig.animation_data.action.name == 'Santa01_Pour_and_Smell'
 assert scene.frame_start == 1 and scene.frame_end == 300
 # The dark mouth-interior material is reserved for the kettle spout, never the face.
@@ -70,6 +83,13 @@ n,kind=struct.unpack_from('<I4s',raw,12)
 gltf=json.loads(raw[20:20+n])
 assert [a['name'] for a in gltf['animations']]==['Santa01_Pour_and_Smell']
 assert gltf['skins'] and gltf['images']
+cloth_gltf=next(m for m in gltf['materials'] if m['name']=='Crimson_velvet')
+assert 'baseColorTexture' in cloth_gltf['pbrMetallicRoughness']
+assert 'metallicRoughnessTexture' in cloth_gltf['pbrMetallicRoughness']
+assert 'normalTexture' in cloth_gltf and cloth_gltf['normalTexture'].get('scale',1)>.7
+assert 'KHR_materials_sheen' in cloth_gltf.get('extensions',{}), 'Velvet sheen did not export'
+assert 'KHR_materials_sheen' not in gltf.get('extensionsRequired',[]), 'Core AR viewers need a PBR fallback'
+
 assert all('bufferView' in im for im in gltf['images']), 'Texture is external'
 assert all('JOINTS_0' in p['attributes'] and 'WEIGHTS_0' in p['attributes'] for m in gltf['meshes'] for p in m['primitives'])
 assert len(raw)<15*1024*1024, 'GLB download budget exceeded'
