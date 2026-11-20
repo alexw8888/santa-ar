@@ -205,7 +205,7 @@ WHITE = material('Soft_eye_whites', (.92, .90, .84), .3)
 IRIS = material('Hazel_eyes', (.14, .065, .028), .3)
 BLACK = material('Pupils', (.006, .003, .002), .2)
 MOUTH = material('Mouth_interior', (.085, .010, .007), .8)
-LAUGH = material('Laughing_mouth', (.055, .007, .005), .7)
+LAUGH = material('Laughing_mouth', (.018, .003, .002), .8)
 TEETH = material('Teeth', (.80, .76, .66), .35)
 TONGUE = material('Tongue', (.55, .12, .10), .5)
 LIP = material('Warm_lips', (.55, .17, .13), .5)
@@ -530,9 +530,11 @@ for sign in (-1, 1):
     ellipsoid((sign * .108, -.102, 1.720), (.066, .044, .049), FACE, seg=32, rings=20)
     # Wide-open, happy eyes.
     ellipsoid((sign * .066, -.117, 1.788), (.037, .021, .034), WHITE, seg=28, rings=18)
-    ellipsoid((sign * .062, -.135, 1.789), (.020, .009, .023), IRIS, seg=24, rings=14)
-    ellipsoid((sign * .062, -.142, 1.790), (.010, .004, .012), BLACK, seg=20, rings=12)
-    ellipsoid((sign * .062 - .006, -.146, 1.800), (.005, .0025, .006), WHITE, seg=12, rings=8)
+    # Irises glance down and to his left, toward the glass in his hand.
+    gx, gy, gz = sign * .062 + .009, .0016, -.008
+    ellipsoid((gx, -.135 + gy, 1.789 + gz), (.020, .009, .023), IRIS, seg=24, rings=14)
+    ellipsoid((gx, -.142 + gy, 1.790 + gz), (.010, .004, .012), BLACK, seg=20, rings=12)
+    ellipsoid((gx - .006, -.146 + gy, 1.800 + gz), (.005, .0025, .006), WHITE, seg=12, rings=8)
     # Raised upper lids, smile creases under the eyes and crow's feet.
     tube([(sign * .030, -.126, 1.806), (sign * .066, -.140, 1.825), (sign * .102, -.118, 1.809)],
          [.004, .0065, .0035], SKIN, sides=8, sub=4)
@@ -691,9 +693,12 @@ grip = [KETTLE + Vector((.16 * math.cos(a), 0, -.18 + .18 * math.sin(a))) for a 
 tube(grip, [.015] * 17, LEATHER, 'kettle', sides=10, sub=1)
 for sign in (-1, 1):
     ellipsoid(KETTLE + Vector((sign * .16, 0, -.18)), (.014, .017, .020), GOLD, 'kettle', seg=16, rings=10)
+CW, CH = .125, .078  # cartouche half-width (along the kettle's curve) and half-height
 for z in (-.085, .052):
     for k in range(12):
         a = math.pi + math.pi * k / 11
+        if abs(.166 * (a - 1.5 * math.pi)) < CW + .014:
+            continue  # leave room for the cartouche
         c = body + Vector((.166 * math.cos(a), .166 * math.sin(a), z))
         tangent = Vector((-math.sin(a), math.cos(a), 0))
         points = [c + tangent * (j - .5) * .018 + Vector((0, 0, .006 * math.sin(j * TAU))) for j in (0, .25, .5, .75, 1)]
@@ -737,21 +742,20 @@ def lettering(text, width, center, shear=0, depth=.0012):
     bpy.data.meshes.remove(mesh_data)
     finish(verts, ENGRAVE, 'kettle')
 
-cart = body + Vector((0, -R0, -.016))
-CW, CH = .092, .057
+cart = body + Vector((0, -R0, -.012))
 face_y = -.0050
 wrapped(lambda: ellipsoid(cart, (CW, .005, CH), BRASS, 'kettle', seg=48, rings=16))
 wrapped(lambda: torus(cart + Vector((0, face_y, 0)), (0, 1, 0), CW, .0040, GOLD, 'kettle', sides=64, cross=6, depth=CH))
 def beads():
-    for k in range(30):
-        a = TAU * k / 30
-        ellipsoid(cart + Vector(((CW - .010) * math.cos(a), face_y - .0015, (CH - .009) * math.sin(a))),
-                  (.0024, .0018, .0024), GOLD, 'kettle', seg=8, rings=5)
+    for k in range(40):
+        a = TAU * k / 40
+        ellipsoid(cart + Vector(((CW - .011) * math.cos(a), face_y - .0015, (CH - .010) * math.sin(a))),
+                  (.0026, .0019, .0026), GOLD, 'kettle', seg=8, rings=5)
 wrapped(beads)
 def emblem():
     # A tiny kettle pouring into a cutting-chai glass, drawn as raised wire lines.
-    c = cart + Vector((-.008, face_y - .0008, .027))
-    line = lambda pts, r=.0013: tube([c + Vector((px * 1.45, 0, pz * 1.45)) for px, pz in pts], [r] * len(pts), ENGRAVE, 'kettle', sides=5, sub=1)
+    c = cart + Vector((-.010, face_y - .0008, .036))
+    line = lambda pts, r=.0018: tube([c + Vector((px * 2.0, 0, pz * 2.0)) for px, pz in pts], [r] * len(pts), ENGRAVE, 'kettle', sides=6, sub=1)
     ring = [(-.010 + .0085 * math.cos(TAU * k / 16), .0075 * math.sin(TAU * k / 16)) for k in range(17)]
     line(ring)
     line([(-.010 + .0085 * math.cos(math.pi * k / 8), .0075 + .006 * math.sin(math.pi * k / 8)) for k in range(9)])
@@ -759,8 +763,8 @@ def emblem():
     line([(.012, -.009), (.020, -.009), (.022, .004), (.010, .004), (.012, -.009)])
 lettering_center = cart + Vector((0, face_y, 0))
 wrapped(emblem)
-wrapped(lambda: lettering('Chaiiwala', .132, lettering_center + Vector((0, 0, -.006)), shear=.22))
-wrapped(lambda: lettering('of London', .052, lettering_center + Vector((0, 0, -.036)), shear=.15))
+wrapped(lambda: lettering('Chaiiwala', .190, lettering_center + Vector((0, 0, -.008)), shear=.22, depth=.0022))
+wrapped(lambda: lettering('of London', .088, lettering_center + Vector((0, 0, -.050)), shear=.15, depth=.0018))
 
 # -------------------- cutting-chai glass, rising chai level and timed stream
 profile = [(-.09, .045), (-.085, .05), (.078, .066), (.09, .066), (.09, .062), (.078, .062), (-.078, .047), (-.08, .006)]
@@ -788,6 +792,15 @@ for vertex in bm.verts:
         vertex.co.x *= 1.10
         vertex.co.y *= 1.06
 bmesh.ops.recalc_face_normals(bm, faces=list(bm.faces))
+# The mouth cavity is an open bowl, so recalc can't tell its inside from its outside. AR Quick Look
+# (RealityKit) ignores doubleSided and culls back faces, so make the cavity face the viewer (-y).
+laugh_index = next(i for i, m in enumerate(MATS) if m.name == LAUGH)
+for face in bm.faces:
+    if face.material_index != laugh_index:
+        continue
+    face.normal_update()
+    if face.normal.y > 0:
+        face.normal_flip()
 mesh = bpy.data.meshes.new(NAME + '_Mesh'); bm.to_mesh(mesh); bm.free()
 mesh.update(); mesh.calc_loop_triangles()
 character = bpy.data.objects.new(NAME, mesh); scene.collection.objects.link(character)
@@ -827,6 +840,17 @@ def action_fcurves(obj):
     from bpy_extras.anim_utils import action_get_channelbag_for_slot
     return action_get_channelbag_for_slot(action, obj.animation_data.action_slot).fcurves
 
+EYES = Vector((0, -.13, 1.79))
+def look_at_glass(glass, extra_pitch=0):
+    """Head turn and nod that follow the glass, as in the photo (the eyes do the rest)."""
+    d = glass + Vector((0, 0, .06)) - EYES
+    yaw = .6 * math.atan2(d.x, -d.y)
+    pitch = .35 * math.atan2(-d.z, math.hypot(d.x, d.y)) + extra_pitch
+    # Bone-local Y is the neck axis (turn); local X nods the face forward.
+    return Quaternion((0, 1, 0), yaw) @ Quaternion((1, 0, 0), pitch)
+
+if QUICK:
+    rig.pose.bones['head'].rotation_quaternion = look_at_glass(CUP)
 if not QUICK:
     mod.show_viewport = False
     for frame in range(1, 301):
@@ -846,9 +870,8 @@ if not QUICK:
             orient_segment(f'upper_arm.{side}', SHOULDERS[side], elbow)
             orient_segment(f'forearm.{side}', elbow, wrist)
             rigid_pose(f'hand.{side}', wrist, rot)
-        head = rig.pose.bones['head']
         inhale = math.sin(math.pi * max(0, min(1, (frame - 204) / 36)))
-        head.rotation_quaternion = Quaternion((1, 0, 0), math.radians(4) * kettle_amount + math.radians(7 + 1.5 * inhale) * cup_amount)
+        rig.pose.bones['head'].rotation_quaternion = look_at_glass(cpos, math.radians(1.5 * inhale) * cup_amount)
         warmth = ramp(frame, 128, 148) * (1 - ramp(frame, 270, 298))
         aroma = rig.pose.bones['aroma']
         aroma.scale = (max(.01, warmth), max(.01, warmth * (1 + .06 * math.sin(frame * .12))), max(.01, warmth))

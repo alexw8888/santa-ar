@@ -111,6 +111,16 @@ with zipfile.ZipFile(path) as archive:
         assert item.compress_type==zipfile.ZIP_STORED
         name_len,extra_len=struct.unpack_from('<HH',data,item.header_offset+26)
         assert (item.header_offset+30+name_len+extra_len)%64==0
+# AR Quick Look needs real opacity on the glass, and front-facing mouth faces (it culls back faces).
+from pxr import Usd, UsdShade
+stage = Usd.Stage.Open(str(path))
+opacity = {p.GetParent().GetName(): UsdShade.Shader(p).GetInput('opacity').Get()
+           for p in stage.Traverse() if UsdShade.Shader(p) and UsdShade.Shader(p).GetInput('opacity')}
+assert opacity['Clear_glass'] < .5 and opacity['Chai_aroma'] < .5, ('Glass exports as opaque', opacity)
+assert opacity['Laughing_mouth'] == 1
+del stage
+laugh = next(i for i, m in enumerate(mesh.data.materials) if m.name == 'Laughing_mouth')
+assert all(p.normal.y < 0 for p in mesh.data.polygons if p.material_index == laugh), 'Mouth cavity faces away from the viewer'
 bpy.ops.wm.read_factory_settings(use_empty=True)
 bpy.ops.wm.usd_import(filepath=str(path))
 assert any(o.type=='ARMATURE' for o in bpy.context.scene.objects)

@@ -40,6 +40,40 @@ if 'convert_orientation' in props:
     kwargs.update(convert_orientation=True, export_global_up_selection='Y',
                   export_global_forward_selection='NEGATIVE_Z')
 bpy.ops.wm.usd_export(**{k: v for k, v in kwargs.items() if k in props})
+
+# Blender's USD exporter always writes UsdPreviewSurface opacity = 1, so glass and steam come out
+# solid in AR Quick Look. Patch the material's alpha into the shader and repackage the USDZ.
+alphas = {}
+for mat in bpy.data.materials:
+    bsdf = mat.node_tree.nodes.get('Principled BSDF') if mat.node_tree else None
+    if bsdf and not bsdf.inputs['Alpha'].is_linked and bsdf.inputs['Alpha'].default_value < 1:
+        alphas[mat.name] = bsdf.inputs['Alpha'].default_value
+if alphas:
+    import shutil, tempfile, zipfile
+    from pxr import Sdf, Usd, UsdShade, UsdUtils
+    usdz = os.path.join(out, version + '.usdz')
+    work = tempfile.mkdtemp()
+    try:
+        with zipfile.ZipFile(usdz) as archive:
+            archive.extractall(work)
+            root = archive.namelist()[0]
+        stage = Usd.Stage.Open(os.path.join(work, root))
+        patched = set()
+        for prim in stage.Traverse():
+            shader = UsdShade.Shader(prim)
+            name = prim.GetParent().GetName()
+            if shader and shader.GetIdAttr().Get() == 'UsdPreviewSurface' and name in alphas:
+                shader.CreateInput('opacity', Sdf.ValueTypeNames.Float).Set(alphas[name])
+                patched.add(name)
+        assert patched == set(alphas), ('Transparent materials not found in USD', set(alphas) - patched)
+        stage.GetRootLayer().Save()
+        del stage
+        os.remove(usdz)
+        assert UsdUtils.CreateNewARKitUsdzPackage(Sdf.AssetPath(os.path.join(work, root)), usdz)
+        print('[export] USDZ opacity set for', ', '.join(sorted(patched)), flush=True)
+    finally:
+        shutil.rmtree(work, ignore_errors=True)
+
 for ext in ('glb','usdz'):
     path = os.path.join(out, version + '.' + ext)
     assert os.path.getsize(path) > 0
