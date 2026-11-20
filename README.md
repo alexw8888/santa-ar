@@ -42,10 +42,12 @@ A closer match to the reference photo, built by `build_santa01b.py` with the sam
 
 - Generated textures are converted from linear to sRGB when written, so the gloves and boots are brown leather and the kettle is golden brass instead of near-black and copper.
 - The fur trim is plush, with soft clumps and fibers instead of spiky dots; the pompom is round and fluffy.
-- The face laughs with an open mouth (lips, upper teeth, tongue), wide eyes, bushy arched eyebrows, a bigger red nose and round rosy cheeks.
+- A portlier build: a rounder belly pushed forward over the belt, broader shoulders and thicker sleeves and trousers.
+- A wide stance: the legs splay out from the hips and the boots turn outward, as in the photo.
+- The face grins with a broad open mouth (lips, upper teeth, tongue) whose corners lift into the cheeks, smile creases, wide eyes, bushy arched eyebrows, a bigger red nose and round rosy cheeks.
 - The beard is wider and fuller, made of wavy, flattened locks; the moustache sweeps up into the cheeks; sideburns join the hat to the beard.
 - Worn mid-brown work boots with thick soles, heels, toe-cap seams and brass ankle buckles; a wide leather belt with a large brass buckle.
-- The kettle has a raised oval cartouche where a logo decal can go; the drink is milky chai.
+- The kettle's beaded oval cartouche carries raised "Chaiiwala" and "of London" lettering with a small kettle-and-glass emblem, modelled as geometry (Blender's built-in font) and wrapped to the kettle's curve; the drink is milky chai.
 - GLB textures are exported as JPEG, so the GLB is about 6.8 MB instead of 14 MB.
 
 ```sh
@@ -54,7 +56,7 @@ blender -b santa01b.blend --python-exit-code 1 -P export_santa.py -- santa01b
 blender -b --python-exit-code 1 -P tests/validate_santa01b.py
 ```
 
-The build also runs with Blender as a Python module (`pip install bpy`): `python3 build_santa01b.py -- previews`. Add `quick` after the preview folder to skip the animation bake and render only the face and front previews. Previews are in `previews/santa01b-*.png`.
+The build also runs with Blender as a Python module (`pip install bpy`): `python3 build_santa01b.py -- previews`. Add `quick` after the preview folder to skip the animation bake and render only the face, front and kettle previews. Previews are in `previews/santa01b-*.png`.
 
 Create later editions as separate numbered pages and asset sets: `santa02.html`, `santa02.glb`, `santa02.usdz`, and so on. Give each edition a matching Blender scene/rig name and its own animation. Never overwrite an earlier edition’s assets when adding a new action. The versioned exporter requires an explicit name to avoid accidentally replacing another edition.
 
