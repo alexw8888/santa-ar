@@ -6,6 +6,10 @@ Each version has its own public HTML page and model assets. GitHub Pages publish
 | --- | --- | --- |
 | Santa 01 | [santa01.html](https://alexw8888.github.io/santa-ar/santa01.html) | Pour chai from a brass kettle while watching the glass, then lift the upright glass to enjoy the aroma |
 | Santa 02 | [santa02.html](https://alexw8888.github.io/santa-ar/santa02.html) | Lift an armful of Aisle24 groceries, glance down and settle them back into both hands |
+| Santa 03 | [santa03.html](https://alexw8888.github.io/santa-ar/santa03.html) | Raise a steaming Bouquet Cafe mug to enjoy the aroma while a bouquet sways in the other hand |
+| Santa 04 | [santa04.html](https://alexw8888.github.io/santa-ar/santa04.html) | Lift and gently rock a little lit tree crowned with the glowing Landmark on Robson sign |
+| Santa 05 | [santa05.html](https://alexw8888.github.io/santa-ar/santa05.html) | Bring a strawberry cream bun up for a bite, then chew happily beside the Mello sack |
+| Santa 06 | [santa06.html](https://alexw8888.github.io/santa-ar/santa06.html) | Lift a steaming Yunqueen rice noodle bowl to smell it while the yellow duck sways |
 
 Open a page in Chrome on Android or Safari on iPhone/iPad. Each page attempts to launch AR automatically after the model loads. Browsers that require a user gesture keep **View in your space** as a fallback. Desktop browsers show the interactive 3D model.
 
@@ -65,5 +69,32 @@ blender -b --python-exit-code 1 -P tests/validate_santa02.py
 ```
 
 The build writes the editable scene, three preview PNGs and the viewer poster. The exporter writes the GLB and USDZ used by `docs/santa02.html`.
+
+## Santa 03 to 06
+
+Each later edition is modelled on its photo in `photos/` and built from the packed `santa01.blend` by its own `build_santaNN.py`. They share `santa_kit.py`, which:
+
+- opens the Santa 01 character, removes the chai props, mirrors the cupped glove onto the right hand and adds the edition's prop bones;
+- models props from lathes, tubes, ellipsoids, two-sided petals/leaves and typeset lettering (flat, or wrapped around a mug or bowl), each bound rigidly to one bone and joined into the character mesh;
+- recolours Santa's velvet and plush textures for new fabrics, keeping their pile;
+- poses the arms by solving each elbow from the fixed shoulder to a wrist placed so the cupped glove wraps the prop, turns the head part way toward a target and aims the eye bones the rest of the way;
+- bakes every frame into ordinary bone keys and saves the scene, previews and poster.
+
+| Edition | Photo | Props and loop |
+| --- | --- | --- |
+| Santa 03 | `03 Bouquet Cafe Santa.jpg` | A big white Bouquet Cafe mug (wrapped lettering and lotus mark) with curling steam, a dense hand bouquet of roses, tulips, asters, daisies and lavender, and a crimson velvet sack brimming with flowers. Six seconds: he lifts the mug, breathes in the steam, lowers it; the bouquet sways throughout. |
+| Santa 04 | `04 Landmark on Robson Santa.jpg` | A little fir tree with needle sprigs, red and green baubles, holly, a spiral of glowing fairy lights and a brass finial carrying the lit Landmark on Robson sign (tower in an arch, outlined lettering). Five seconds: he lifts and rocks the tree while looking up at the sign. |
+| Santa 05 | `05 Mello Santa.jpg` | A sugared brioche with a cream ridge, piped swirls, a strawberry and a scalloped bite showing the filling, and a mustard velvet Mello sack (stacked outline lettering, jute rope) holding gifts, a gingerbread figure and a teddy. Five seconds: he raises the bun for a bite, lowers it and chews. |
+| Santa 06 | `06 Yunqueen Santa.jpg` | A porcelain Yunqueen Rice Noodles bowl with broth, wavy rice noodles, pork mince, cilantro, scallions and chilli oil, steam, and the yellow plush duck with its deadpan eyes. Five seconds: he lifts the bowl to smell it while the duck sways. |
+
+Steam materials are translucent; the exporter patches their opacity into the USDZ as for Santa 01. Run from the repository root, replacing `03` with the edition number:
+
+```sh
+blender -b --factory-startup --python-exit-code 1 -P build_santa03.py -- previews
+blender -b santa03.blend --python-exit-code 1 -P export_santa.py -- santa03
+blender -b --python-exit-code 1 -P tests/validate_santa03.py
+```
+
+Add shot names after the preview folder (for example `-- previews front`) to render only those previews. The tests check that the arm chains stay connected to fixed shoulders, both gloves stay locked to their props, props are skinned rigidly, the loop closes, and the GLB, USDZ and page agree.
 
 Commit the generated models, page, poster, and previews to `main` to publish. No backend or custom build service is required.
