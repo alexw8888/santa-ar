@@ -120,8 +120,8 @@
 
   <model-viewer
     id="santa06"
-    src="santa06.glb?v=yunqueen-1"
-    ios-src="santa06.usdz?v=yunqueen-1"
+    data-src="santa06.glb?v=yunqueen-2"
+    ios-src="santa06.usdz?v=yunqueen-2"
     alt="Santa lifts a steaming Yunqueen rice noodle bowl while a yellow duck sways beside him."
     ar
     ar-modes="scene-viewer quick-look webxr"
@@ -155,30 +155,77 @@
     const btn = document.getElementById('toggleAnim');
     const hint = document.getElementById('launchHint');
     const tapHint = 'If AR doesn’t open automatically, tap “View in your space”.';
+    const animation = 'Santa06_Noodle_Aroma';
 
-    mv.addEventListener('load', async () => {
+    // iPhone/iPad open the USDZ in AR Quick Look, which never uses the GLB. Same test as model-viewer.
+    const quickLook = (() => {
+      const ios = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+        (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+      if (!ios) return false;
+      if (window.webkit && window.webkit.messageHandlers) {
+        return /CriOS\/|EdgiOS\/|FxiOS\/|GSA\/|DuckDuckGo\//.test(navigator.userAgent);
+      }
+      const a = document.createElement('a');
+      return Boolean(a.relList && a.relList.supports && a.relList.supports('ar'));
+    })();
+
+    // The GLB (the in-page 3D view) is requested only once, from data-src.
+    let modelRequested = false;
+    const loadModel = () => {
+      if (!modelRequested) { modelRequested = true; mv.src = mv.dataset.src; }
+    };
+
+    mv.addEventListener('load', () => {
       // Fall back to the first animation if the name differs.
-      if (!mv.availableAnimations.includes('Santa06_Noodle_Aroma') && mv.availableAnimations.length) {
+      if (!mv.availableAnimations.includes(animation) && mv.availableAnimations.length) {
         mv.animationName = mv.availableAnimations[0];
       }
       mv.play();
+    }, { once: true });
+
+    async function launchAR() {
+      await customElements.whenDefined('model-viewer');
       await mv.updateComplete;
+      // model-viewer picks the AR mode asynchronously after an update.
+      for (let i = 0; i < 20 && !mv.canActivateAR; i++) await new Promise(r => setTimeout(r, 50));
       if (!mv.canActivateAR) {
         document.getElementById('noAr').hidden = false;
         hint.textContent = 'Drag to rotate · pinch to zoom';
-        return;
+        return false;
       }
-
       // Native AR first; a browser may still require a user gesture.
       // Attempt once so returning from AR never opens it again in a loop.
       hint.textContent = tapHint;
       try {
         await mv.activateAR();
+        return true;
       } catch (error) {
         hint.textContent = 'Tap “View in your space” to open AR.';
         console.warn('Automatic AR launch was blocked:', error);
+        return false;
       }
-    }, { once: true });
+    }
+
+    if (quickLook) {
+      // Open Quick Look straight away so the USDZ downloads on its own, and hold the GLB back
+      // until the person returns to the page or touches it.
+      launchAR().then(opened => {
+        if (!opened) loadModel();
+        else hint.textContent = tapHint + ' Tap Santa to see him in 3D here.';
+      });
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') loadModel();
+      });
+      window.addEventListener('focus', loadModel);
+      window.addEventListener('pageshow', e => { if (e.persisted) loadModel(); });
+      document.addEventListener('pointerdown', e => {
+        if (!e.target.closest('.ar-button')) loadModel();
+      });
+    } else {
+      // Android and desktop: Scene Viewer and WebXR need the GLB, so load it, then open AR.
+      loadModel();
+      mv.addEventListener('load', launchAR, { once: true });
+    }
 
     mv.addEventListener('ar-status', ({ detail: { status } }) => {
       if (status === 'failed') hint.textContent = tapHint;
