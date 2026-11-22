@@ -120,9 +120,9 @@
 
   <model-viewer
     id="santa01"
-    src="santa01.glb?v=chai-2"
-    ios-src="santa01.usdz?v=chai-2"
-    alt="A laughing Santa in red velvet and brown leather boots pouring chai from a golden brass kettle into a glass, then holding it up to enjoy the aroma"
+    src="santa01.glb?v=chai-3"
+    ios-src="santa01.usdz?v=chai-3"
+    alt="A laughing Santa in red velvet and brown leather boots pouring chai from a golden brass kettle into a glass, then raising it to his lips and sipping it"
     ar
     ar-modes="scene-viewer quick-look webxr"
     ar-scale="auto"
@@ -136,7 +136,7 @@
     exposure="1.05"
     environment-image="neutral"
     autoplay
-    animation-name="Santa01_Pour_and_Smell">
+    animation-name="Santa01_Natural_Shoulders_Drink_Cup_Tilt">
 
     <button slot="ar-button" class="ar-button">🎅 View in your space</button>
     <div class="ar-prompt">Move your phone slowly to find the floor</div>
@@ -158,7 +158,7 @@
 
     mv.addEventListener('load', async () => {
       // Fall back to the first animation if the name differs.
-      if (!mv.availableAnimations.includes('Santa01_Pour_and_Smell') && mv.availableAnimations.length) {
+      if (!mv.availableAnimations.includes('Santa01_Natural_Shoulders_Drink_Cup_Tilt') && mv.availableAnimations.length) {
         mv.animationName = mv.availableAnimations[0];
       }
       mv.play();

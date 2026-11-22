@@ -95,7 +95,10 @@ magic,version,length=struct.unpack_from('<4sII',raw)
 assert magic==b'glTF' and version==2 and length==len(raw)
 n,kind=struct.unpack_from('<I4s',raw,12)
 gltf=json.loads(raw[20:20+n])
-assert [a['name'] for a in gltf['animations']]==['Santa01_Pour_and_Smell']
+# santa01.blend keeps the build's pour-and-aroma action; the published GLB is exported after
+# santa01_final_animation.py, with only its final drinking action (no stage backups).
+assert [a['name'] for a in gltf['animations']]==['Santa01_Natural_Shoulders_Drink_Cup_Tilt']
+assert 'animation-name="Santa01_Natural_Shoulders_Drink_Cup_Tilt"' in (ROOT/'docs/santa01.html').read_text(encoding='utf-8'), 'Viewer requests a different animation'
 assert gltf['skins'] and gltf['images']
 cloth_gltf=next(m for m in gltf['materials'] if m['name']=='Crimson_velvet')
 assert 'baseColorTexture' in cloth_gltf['pbrMetallicRoughness']
