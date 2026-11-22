@@ -18,29 +18,27 @@
         color: var(--fg); text-decoration: none; box-shadow: 0 1px 4px #0002; }
     a b { color: var(--accent); }
     a span { display: block; color: var(--muted); font-size: 13px; }
-    a img { display: none; }
   </style>
 </head>
 <body>
   <h1>Quick Look test, Santa 01</h1>
-  <p>Tap each link on the iPhone 12 Pro and note which ones open in AR. Each one leaves one thing out of Santa 01.</p>
+  <p>Tap each link on the iPhone 12 Pro and note which ones open in AR. Each opens a viewer page like the live Santa 01 page, and each leaves one thing out of Santa 01.</p>
   <ol>
-    <!-- Quick Look needs an <img> as the link's first child for rel="ar" to open AR directly. -->
-    <li><a rel="ar" href="control-boy.usdz?v=1"><img alt="">
+    <li><a href="control-boy.html">
       <b>0 · Boy (control)</b><span>The old boy model, which this phone opened before. 1.0 MB</span></a></li>
-    <li><a rel="ar" href="santa01-a-original.usdz?v=1"><img alt="">
+    <li><a href="santa01-a-original.html">
       <b>A · Santa 01 as published</b><span>Same file as the live page. 3.6 MB</span></a></li>
-    <li><a rel="ar" href="santa01-b-no-textures.usdz?v=1"><img alt="">
+    <li><a href="santa01-b-no-textures.html">
       <b>B · No textures</b><span>Plain colours, no image or normal maps</span></a></li>
-    <li><a rel="ar" href="santa01-c-no-animation.usdz?v=1"><img alt="">
+    <li><a href="santa01-c-no-animation.html">
       <b>C · No animation</b><span>Santa stands still</span></a></li>
-    <li><a rel="ar" href="santa01-d-short-animation.usdz?v=1"><img alt="">
+    <li><a href="santa01-d-short-animation.html">
       <b>D · Short animation</b><span>First 60 of 300 frames only</span></a></li>
-    <li><a rel="ar" href="santa01-e-3-influences.usdz?v=1"><img alt="">
+    <li><a href="santa01-e-3-influences.html">
       <b>E · 3 bone influences</b><span>Up to 3 bones per vertex instead of 4, like the boy</span></a></li>
-    <li><a rel="ar" href="santa01-f-no-tex-no-anim.usdz?v=1"><img alt="">
+    <li><a href="santa01-f-no-tex-no-anim.html">
       <b>F · No textures, no animation</b><span>The bare mesh</span></a></li>
-    <li><a rel="ar" href="santa01-g-low-poly.usdz?v=1"><img alt="">
+    <li><a href="santa01-g-low-poly.html">
       <b>G · A third of the triangles</b><span>45k triangles instead of 135k. 1.8 MB</span></a></li>
   </ol>
 </body>
