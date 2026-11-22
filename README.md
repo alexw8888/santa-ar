@@ -4,7 +4,7 @@ Each version has its own public HTML page and model assets. GitHub Pages publish
 
 | Version | Public page | Animation |
 | --- | --- | --- |
-| Santa 01 | [santa01.html](https://alexw8888.github.io/santa-ar/santa01.html) | Pour chai from a brass kettle while watching the glass, then raise the glass to his lips and sip it empty |
+| Santa 01 | [santa01b.html](https://alexw8888.github.io/santa-ar/santa01b.html) | Pour chai from a brass kettle while watching the glass, then raise the glass to his lips and sip it empty |
 | Santa 02 | [santa02.html](https://alexw8888.github.io/santa-ar/santa02.html) | Lift an armful of Aisle24 groceries, glance down and settle them back into both hands |
 | Santa 03 | [santa03.html](https://alexw8888.github.io/santa-ar/santa03.html) | Raise a steaming Bouquet Cafe mug to enjoy the aroma while a bouquet sways in the other hand |
 | Santa 04 | [santa04.html](https://alexw8888.github.io/santa-ar/santa04.html) | Lift and gently rock a little lit tree crowned with the glowing Landmark on Robson sign |
@@ -54,7 +54,7 @@ Files:
 - `santa01_final_animation.py` opens `santa01.blend` and writes the drinking animation to a new `santa01_FINAL_ANIMATED.blend` beside it (git-ignored); it never overwrites its source and refuses a file it has already animated. It also keeps each stage's earlier action as a backup.
 - `assets/textures/santa01-velvet-source.png` is the original generated fabric swatch; the build creates optimized runtime maps from it.
 - `export_santa.py` exports the named scene into `docs/santa01.glb` and `docs/santa01.usdz`.
-- `docs/santa01.html` is the viewer; `docs/santa01-poster.webp` is its loading poster.
+- `docs/santa01b.html` is the viewer; `docs/santa01-poster.webp` is its loading poster.
 - `previews/santa01-*.png` show the front view, face, kettle lettering, fabric close-up and the ready, pour and aroma poses of the built (pre-drinking) animation.
 
 Use an official Blender build with glTF and USD support (tested on 5.3). Build, animate, then export only the final action (the `--python-expr` step drops the stage backups, which would otherwise be exported as extra animations):
@@ -65,7 +65,7 @@ blender -b santa01.blend --python-exit-code 1 -P santa01_final_animation.py
 blender -b santa01_FINAL_ANIMATED.blend --python-exit-code 1 --python-expr "import bpy; a = bpy.data.objects['Santa01_Rig'].animation_data.action; [bpy.data.actions.remove(x) for x in list(bpy.data.actions) if x != a]" -P export_santa.py -- santa01
 ```
 
-Validate the model, loop, prop attachments, eye tracking and exports with the test below. It checks the built `santa01.blend`, then checks that the GLB carries only the final drinking action and that `docs/santa01.html` requests it:
+Validate the model, loop, prop attachments, eye tracking and exports with the test below. It checks the built `santa01.blend`, then checks that the GLB carries only the final drinking action and that `docs/santa01b.html` requests it:
 
 ```sh
 blender -b --python-exit-code 1 -P tests/validate_santa01.py
