@@ -122,7 +122,8 @@ with zipfile.ZipFile(path) as archive:
     assert archive.testzip() is None
     assert archive.namelist()[0].endswith(('.usd','.usdc','.usda'))
     assert not any(p.lower().endswith('.exr') for p in archive.namelist())
-    assert any(p.lower().endswith('.png') for p in archive.namelist())
+    textures=[p for p in archive.namelist() if p.lower().endswith(('.png','.jpg','.jpeg'))]
+    assert textures and all(p.lower().endswith('.jpg') for p in textures), 'USDZ textures should be JPEG'
     data=path.read_bytes()
     for item in archive.infolist():
         assert item.compress_type==zipfile.ZIP_STORED

@@ -11,7 +11,18 @@ Each version has its own public HTML page and model assets. GitHub Pages publish
 | Santa 05 | [santa05.html](https://alexw8888.github.io/santa-ar/santa05.html) | Bring a strawberry cream bun up for a bite, then chew happily beside the Mello sack |
 | Santa 06 | [santa06.html](https://alexw8888.github.io/santa-ar/santa06.html) | Lift a steaming Yunqueen rice noodle bowl to smell it while the yellow duck sways |
 
-Open a page in Chrome on Android or Safari on iPhone/iPad. Each page attempts to launch AR automatically after the model loads. Browsers that require a user gesture keep **View in your space** as a fallback. Desktop browsers show the interactive 3D model.
+Open a page in Chrome on Android or Safari on iPhone/iPad. Each page attempts to launch AR automatically. On iPhone/iPad it opens AR Quick Look straight away, which downloads only the USDZ; the page holds back the GLB for the in-page 3D view until you return to the page or tap it, so the two downloads never compete. Android and desktop load the GLB first, since Scene Viewer and WebXR need it. Browsers that require a user gesture keep **View in your space** as a fallback. Desktop browsers show the interactive 3D model.
+
+`export_santa.py` slims every edition's GLB and USDZ for phone downloads without touching the `.blend`. It halves the triangles of the beard and fur trim (and Santa 03's bouquet), halves every texture (never below 128 px) and writes them as JPEG at quality 70 in both files. Blender's USD exporter only writes PNG, so the exporter re-encodes the USDZ textures and repackages it; images with real transparency would stay PNG. Tune `DECIMATE`, `TEXTURE_SCALE` and `JPEG_QUALITY` at the top of the exporter.
+
+| Edition | Triangles (scene → export) | GLB | USDZ |
+| --- | --- | --- | --- |
+| Santa 01 | 135k → 101k | 4.4 MB | 3.6 MB |
+| Santa 02 | 149k → 115k | 4.7 MB | 5.6 MB |
+| Santa 03 | 232k → 161k | 7.1 MB | 8.3 MB |
+| Santa 04 | 153k → 119k | 5.6 MB | 5.9 MB |
+| Santa 05 | 134k → 99k | 4.2 MB | 5.0 MB |
+| Santa 06 | 153k → 119k | 4.9 MB | 5.8 MB |
 
 ## Santa 01
 
@@ -34,7 +45,7 @@ The published animation is made in two steps. `build_santa01.py` builds the char
 - The fur trim is plush, with soft clumps and fibers; the pompom is round and fluffy.
 - Brown leather gloves; worn mid-brown work boots with thick soles, heels, toe-cap seams and brass ankle buckles; a wide leather belt with a large brass buckle.
 - The golden brass kettle's large beaded oval cartouche carries raised "Chaiiwala" and "of London" lettering with a small kettle-and-glass emblem, modelled as geometry (Blender's built-in font) and wrapped to the kettle's curve.
-- Generated textures are converted from linear to sRGB when written; GLB textures are exported as JPEG to keep the GLB around 7 MB.
+- Generated textures are converted from linear to sRGB when written; the scene keeps them at full resolution (velvet 1024 px), and the exporter halves them into JPEG for the GLB and USDZ.
 - AR Quick Look fixes: the exporter patches the glass and steam opacity into the USDZ (Blender writes every UsdPreviewSurface as opaque), and the mouth cavity faces the viewer because Quick Look culls back faces even on double-sided meshes.
 
 Files:
