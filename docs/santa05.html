@@ -121,6 +121,7 @@
   <model-viewer
     id="santa05"
     data-src="santa05.glb?v=mello-5"
+    data-android-src="santa05-android.glb?v=mello-5"
     ios-src="santa05.usdz?v=mello-5"
     alt="Santa bites into a strawberry cream bun beside a mustard velvet Mello sack of gifts."
     ar
@@ -169,10 +170,17 @@
       return Boolean(a.relList && a.relList.supports && a.relList.supports('ar'));
     })();
 
-    // The GLB (the in-page 3D view) is requested only once, from data-src.
+    // Android loads the copy without the material extensions Scene Viewer rejects (it closes as
+    // soon as it opens a model that uses them); Scene Viewer downloads whatever the page shows.
+    const android = /Android/i.test(navigator.userAgent);
+
+    // The GLB (the in-page 3D view) is requested only once, from data-src or data-android-src.
     let modelRequested = false;
     const loadModel = () => {
-      if (!modelRequested) { modelRequested = true; mv.src = mv.dataset.src; }
+      if (!modelRequested) {
+        modelRequested = true;
+        mv.src = (android && mv.dataset.androidSrc) || mv.dataset.src;
+      }
     };
 
     mv.addEventListener('load', () => {

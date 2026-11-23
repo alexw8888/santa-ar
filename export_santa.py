@@ -6,6 +6,7 @@ The exports are slimmed for phone downloads; the .blend is never saved, so it ke
 - the beard and fur trim, the densest geometry, are decimated (DECIMATE);
 - every texture is halved (TEXTURE_SCALE, never below MIN_TEXTURE px) and written as JPEG at
   JPEG_QUALITY in both the GLB and the USDZ. Images with real transparency stay PNG.
+It also writes santaNN-android.glb for Scene Viewer (see scene_viewer_glb.py).
 """
 import bpy, os, re, struct, sys
 import numpy as np
@@ -168,7 +169,12 @@ try:
 finally:
     shutil.rmtree(work, ignore_errors=True)
 
-for ext in ('glb', 'usdz'):
-    path = os.path.join(out, version + '.' + ext)
+# -------- Android copy of the GLB for Scene Viewer, without the material extensions it rejects
+sys.path.insert(0, HERE)
+from scene_viewer_glb import write_android_glb
+write_android_glb(version, out)
+
+for ext in ('glb', '-android.glb', 'usdz'):
+    path = os.path.join(out, version + ('' if ext.startswith('-') else '.') + ext)
     assert os.path.getsize(path) > 0
     print('[export]', version, ext, os.path.getsize(path), 'bytes', flush=True)

@@ -74,6 +74,7 @@ assert any(s.GetIdAttr().Get() == 'UsdPreviewSurface' and s.GetInput('opacity') 
            for p in stage.Traverse() if p.IsA(UsdShade.Shader) for s in [UsdShade.Shader(p)])
 page = (docs / 'santa02.html').read_text(encoding='utf-8')
 assert action in page
-for asset in ('santa02.glb', 'santa02.usdz', 'santa02-poster.webp'):
+for asset in ('santa02.glb', 'santa02-android.glb', 'santa02.usdz', 'santa02-poster.webp'):
     assert asset in page and (docs / asset).stat().st_size > 0
+assert b'extensions' not in (docs / 'santa02-android.glb').read_bytes()[:200000],     'Android GLB still uses glTF extensions'
 print('PASS: Santa02 grip, lift, stationary tote, loop closure, skinning, textures, exports and page assets')
