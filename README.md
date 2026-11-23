@@ -1,6 +1,6 @@
 # WebAR characters
 
-Each version has its own public HTML page and model assets. GitHub Pages publishes `docs/` at https://alexw8888.github.io/santa-ar/.
+Each version has its own public HTML page and model assets. GitHub Pages publishes `docs/` at https://alexw8888.github.io/santa-ar/. [preview.html](https://alexw8888.github.io/santa-ar/preview.html) (`docs/preview.html`) links to all six pages, with each one's poster; add a card there for a new edition.
 
 | Version | Public page | Animation |
 | --- | --- | --- |
