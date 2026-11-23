@@ -183,7 +183,7 @@
       mv.play();
     }, { once: true });
 
-    async function launchAR() {
+    async function arAvailable() {
       await customElements.whenDefined('model-viewer');
       await mv.updateComplete;
       // model-viewer picks the AR mode asynchronously after an update.
@@ -193,7 +193,12 @@
         hint.textContent = 'Drag to rotate · pinch to zoom';
         return false;
       }
-      // Native AR first; a browser may still require a user gesture.
+      return true;
+    }
+
+    async function launchAR() {
+      if (!(await arAvailable())) return false;
+      // Quick Look first; Safari may still require a user gesture.
       // Attempt once so returning from AR never opens it again in a loop.
       hint.textContent = tapHint;
       try {
@@ -222,13 +227,18 @@
         if (!e.target.closest('.ar-button')) loadModel();
       });
     } else {
-      // Android and desktop: Scene Viewer and WebXR need the GLB, so load it, then open AR.
+      // Android and desktop: load the GLB for the 3D view and open AR only from a tap on the button.
+      // Opening Scene Viewer without a tap makes Chrome on Android treat it as a redirect: it hands
+      // the tab over and closes it, so the page is gone once AR ends.
+      hint.textContent = 'Loading Santa…';
       loadModel();
-      mv.addEventListener('load', launchAR, { once: true });
+      mv.addEventListener('load', async () => {
+        if (await arAvailable()) hint.textContent = 'Tap “View in your space” to place Santa in your room.';
+      }, { once: true });
     }
 
     mv.addEventListener('ar-status', ({ detail: { status } }) => {
-      if (status === 'failed') hint.textContent = tapHint;
+      if (status === 'failed') hint.textContent = 'AR didn’t open. Tap “View in your space” to try again.';
     });
 
     btn.addEventListener('click', () => {
