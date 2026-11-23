@@ -125,7 +125,7 @@
     ios-src="santa03.usdz?v=bouquet-3"
     alt="Santa holds a steaming Bouquet Cafe mug and a bright bouquet, with a velvet sack of flowers by his boot."
     ar
-    ar-modes="scene-viewer quick-look webxr"
+    ar-modes="webxr scene-viewer quick-look"
     ar-scale="auto"
     ar-placement="floor"
     camera-controls
@@ -170,17 +170,20 @@
       return Boolean(a.relList && a.relList.supports && a.relList.supports('ar'));
     })();
 
-    // Android loads the copy without the material extensions Scene Viewer rejects (it closes as
-    // soon as it opens a model that uses them); Scene Viewer downloads whatever the page shows.
+    // Android opens AR in Chrome's own WebXR first, which renders the full GLB. Phones without it
+    // fall back to Scene Viewer, which closes as soon as it opens a model with the material
+    // extensions in the full GLB, so they load the Android copy (Scene Viewer downloads whatever
+    // the page shows).
     const android = /Android/i.test(navigator.userAgent);
+    const webxrAR = android && navigator.xr && navigator.xr.isSessionSupported
+      ? navigator.xr.isSessionSupported('immersive-ar').catch(() => false)
+      : Promise.resolve(false);
 
-    // The GLB (the in-page 3D view) is requested only once, from data-src or data-android-src.
+    // The GLB (the in-page 3D view) is requested only once.
+    let modelSrc = mv.dataset.src;
     let modelRequested = false;
     const loadModel = () => {
-      if (!modelRequested) {
-        modelRequested = true;
-        mv.src = (android && mv.dataset.androidSrc) || mv.dataset.src;
-      }
+      if (!modelRequested) { modelRequested = true; mv.src = modelSrc; }
     };
 
     mv.addEventListener('load', () => {
@@ -236,10 +239,13 @@
       });
     } else {
       // Android and desktop: load the GLB for the 3D view and open AR only from a tap on the button.
-      // Opening Scene Viewer without a tap makes Chrome on Android treat it as a redirect: it hands
-      // the tab over and closes it, so the page is gone once AR ends.
+      // WebXR needs a tap anyway, and opening Scene Viewer without one makes Chrome on Android treat
+      // it as a redirect: it hands the tab over and closes it, so the page is gone once AR ends.
       hint.textContent = 'Loading Santa…';
-      loadModel();
+      webxrAR.then(supported => {
+        if (android && !supported) modelSrc = mv.dataset.androidSrc || modelSrc;
+        loadModel();
+      });
       mv.addEventListener('load', async () => {
         if (await arAvailable()) hint.textContent = 'Tap “View in your space” to place Santa in your room.';
       }, { once: true });
