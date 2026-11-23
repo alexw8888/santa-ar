@@ -26,7 +26,10 @@ cloth_index=next(i for i,m in enumerate(mesh.data.materials) if m.name=='Crimson
 cloth_u=[mesh.data.uv_layers.active.data[i].uv.x for p in mesh.data.polygons if p.material_index==cloth_index for i in p.loop_indices]
 assert max(cloth_u)-min(cloth_u)>3, 'Fabric UVs are stretched across the entire garment'
 
-assert rig.animation_data.action.name == 'Santa01_Pour_and_Smell'
+# santa01.blend holds only the final loop, built on the base character with its secondary bones.
+assert rig.animation_data.action.name == 'Santa01_Natural_Shoulders_Drink_Cup_Tilt'
+assert [a.name for a in bpy.data.actions] == [rig.animation_data.action.name], 'Leftover actions'
+assert all(b in rig.data.bones for b in ('coat_hem', 'sleeve_sway.L', 'sleeve_sway.R', 'hat_tip'))
 assert scene.frame_start == 1 and scene.frame_end == 300
 # The dark mouth-interior material is reserved for the kettle spout, never the face.
 head_group=mesh.vertex_groups['head'].index
@@ -38,10 +41,13 @@ originals={name: rig.data.bones[name].matrix_local.inverted() for name in ('cup'
 def transformed(name, point):
     return rig.pose.bones[name].matrix @ originals[name] @ Vector(point)
 
-# Hand/prop attachment must remain rigid while both arms bend and the glass stays upright.
+# Each glove holds its prop rigidly, the arms stay jointed and the shoulders ride the swaying chest.
 loop=[]
+levels, tilts, steam, stream_miss = {}, {}, {}, 0
 for frame in range(1,301):
     scene.frame_set(frame)
+    chest=rig.pose.bones['chest']
+    chest_deform=chest.matrix @ chest.bone.matrix_local.inverted()
     for side,prop,bind_wrist in (('L','cup',(.31,-.44,1.12)),('R','kettle',(-.44,-.32,1.55))):
         expected=transformed(prop,bind_wrist)
         hand=rig.pose.bones['hand.'+side]
@@ -49,28 +55,34 @@ for frame in range(1,301):
         upper,fore = (rig.pose.bones[n+'.'+side] for n in ('upper_arm','forearm'))
         assert (upper.tail-fore.head).length < 1e-4, (frame,side,'elbow gap')
         assert (fore.tail-hand.head).length < 1e-4, (frame,side,'wrist gap')
+        assert (upper.head-chest_deform @ upper.bone.head_local).length < 1e-4, (frame,side,'shoulder off the chest')
     assert all(math.isfinite(c) for pb in rig.pose.bones for row in pb.matrix for c in row)
-    level=rig.pose.bones['liquid'].scale.y
-    assert .4199 <= level <= 1.0001, 'Chai overflow'
+    levels[frame]=level=rig.pose.bones['liquid'].scale.y
+    assert -1e-4 <= level <= 1.0001, 'Chai overflow'
     cup_up=rig.pose.bones['cup'].matrix.to_3x3() @ Vector((0,1,0))
-    assert cup_up.normalized().dot(Vector((0,0,1)))>.9999, 'Glass tips as if drinking'
-    if 204<=frame<=240:
-        assert abs(level-1)<1e-4, 'Chai is consumed during the aroma gesture'
-        assert rig.pose.bones['head'].rotation_quaternion.x>0, 'Head should lean toward the aroma'
-        assert (rig.pose.bones['cup'].head-Vector((.030,-.355,1.590))).length<1e-4
-
-    flowing=rig.pose.bones['stream'].scale.x > .999
-    if flowing:
+    tilts[frame]=math.degrees(cup_up.angle(Vector((0,0,1))))
+    steam[frame]=rig.pose.bones['aroma'].scale.y
+    if rig.pose.bones['stream'].scale.x > .999:
         spout=transformed('kettle',(0,-.412,1.37))
-        start=rig.pose.bones['stream'].head
-        assert (spout-start).length < 1e-4, (frame,'stream detached from spout')
+        assert (spout-rig.pose.bones['stream'].head).length < 1e-4, (frame,'stream detached from spout')
+        # The stream ends at the chai surface.
         endpoint=transformed('stream',(.15,-.48,1.168))
-        assert abs(endpoint.z-(1.045+.127*level)) < 1e-4, (frame,'stream misses chai surface')
+        surface=transformed('cup',(.15,-.48,1.045+.127*level))
+        stream_miss=max(stream_miss,abs(endpoint.z-surface.z))
     if frame in (1,300): loop.append([pb.matrix.copy() for pb in rig.pose.bones])
-assert max(abs(a[i][j]-b[i][j]) for a,b in zip(*loop) for i in range(4) for j in range(4)) < 1e-4
+assert max(abs(a[i][j]-b[i][j]) for a,b in zip(*loop) for i in range(4) for j in range(4)) < 1e-4, 'Loop does not close'
+assert stream_miss < .001, ('Stream misses the chai surface', stream_miss)
+# The glass starts and ends empty, fills while poured, and drains while he sips with it tipped to his lips.
+assert levels[1] < .002 and levels[300] < .002, 'Glass should be empty at the loop boundary'
+assert all(levels[f] > .999 for f in range(128, 218)), 'Glass should be full after the pour'
+assert levels[248] < .002, 'Chai should be gone after the sip'
+assert all(levels[f] >= levels[f+1] - 1e-6 for f in range(217, 248)), 'Chai should drain steadily'
+assert 16 < max(tilts.values()) < 19, ('Glass should tip about 17 degrees (plus a little body sway)', max(tilts.values()))
+assert max(tilts[f] for f in list(range(1, 210)) + list(range(260, 301))) < 2, 'Glass tips outside the sip'
+assert max(steam[f] for f in range(255, 301)) < .01, 'Steam should fade with the last sip'
 # The eyes track the glass: each gaze points closer to it than the face does, and it moves when the glass is raised.
 gazes={}
-for frame in (1,92,222):
+for frame in (1,92,204):
     scene.frame_set(frame)
     glass=rig.pose.bones['cup'].head+Vector((0,0,.06))
     head=rig.pose.bones['head']
@@ -81,22 +93,21 @@ for frame in (1,92,222):
         to_glass=(glass-eye.head).normalized()
         assert gaze.angle(to_glass) < face.angle(to_glass)-.1, (frame,side,'eye is not looking at the glass')
         gazes[frame,side]=gaze
-assert all(gazes[1,s].angle(gazes[222,s]) > .15 for s in 'LR'), 'Eyes do not follow the raised glass'
-# Skinning itself must stay finite, including a nearly collapsed liquid stream.
-for frame in (1,42,62,92,128,160,190,222,258,300):
+assert all(gazes[1,s].angle(gazes[204,s]) > .15 for s in 'LR'), 'Eyes do not follow the raised glass'
+# Skinning itself must stay finite, including a nearly collapsed liquid stream and an empty glass.
+for frame in (1,42,62,92,128,160,190,222,240,258,300):
     scene.frame_set(frame)
     evaluated=mesh.evaluated_get(bpy.context.evaluated_depsgraph_get())
     data=evaluated.to_mesh()
     assert all(math.isfinite(c) for v in data.vertices for c in v.co)
     evaluated.to_mesh_clear()
-print('PASS: all 300 frames preserve arm joints, prop grips, stream alignment, chai level, and loop closure',flush=True)
+print(f'PASS: all 300 frames keep arm joints, rigid grips, stream on the spout (surface within {stream_miss*1000:.1f} mm), '
+      f'the chai level, the {max(tilts.values()):.1f} degree sip and loop closure',flush=True)
 raw=(ROOT/'docs/santa01.glb').read_bytes()
 magic,version,length=struct.unpack_from('<4sII',raw)
 assert magic==b'glTF' and version==2 and length==len(raw)
 n,kind=struct.unpack_from('<I4s',raw,12)
 gltf=json.loads(raw[20:20+n])
-# santa01.blend keeps the build's pour-and-aroma action; the published GLB is exported after
-# santa01_final_animation.py, with only its final drinking action (no stage backups).
 assert [a['name'] for a in gltf['animations']]==['Santa01_Natural_Shoulders_Drink_Cup_Tilt']
 assert 'animation-name="Santa01_Natural_Shoulders_Drink_Cup_Tilt"' in (ROOT/'docs/santa01b.html').read_text(encoding='utf-8'), 'Viewer requests a different animation'
 assert gltf['skins'] and gltf['images']

@@ -1,4 +1,4 @@
-"""Build the Landmark on Robson edition from the packed character made by build_santa01.py.
+"""Build the Landmark on Robson edition from the base character made by build_santa_base.py.
 
 blender -b --factory-startup --python-exit-code 1 -P build_santa04.py -- previews
 The optional directory receives front, lifted, tree and sign previews and the page poster.
