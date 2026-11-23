@@ -8,7 +8,7 @@ Each version has its own public HTML page and model assets. GitHub Pages publish
 | Santa 02 | [santa02.html](https://alexw8888.github.io/santa-ar/santa02.html) | Lift an armful of Aisle24 groceries, glance down and settle them back into both hands |
 | Santa 03 | [santa03.html](https://alexw8888.github.io/santa-ar/santa03.html) | Raise a steaming Bouquet Cafe mug to enjoy the aroma while a bouquet sways in the other hand |
 | Santa 04 | [santa04.html](https://alexw8888.github.io/santa-ar/santa04.html) | Lift and gently rock a little lit tree crowned with the glowing Landmark on Robson sign |
-| Santa 05 | [santa05.html](https://alexw8888.github.io/santa-ar/santa05.html) | Bring a strawberry cream bun up for a bite, then chew happily beside the Mello sack |
+| Santa 05 | [santa05.html](https://alexw8888.github.io/santa-ar/santa05.html) | Lift a strawberry cream bun from chest height to his lips, bite a piece off the top, then lower it and chew beside the Mello sack |
 | Santa 06 | [santa06.html](https://alexw8888.github.io/santa-ar/santa06.html) | Lift a steaming Yunqueen rice noodle bowl to smell it while the yellow duck sways |
 
 Open a page in Chrome on Android or Safari on iPhone/iPad. Each page attempts to launch AR automatically. On iPhone/iPad it opens AR Quick Look straight away, which downloads only the USDZ; the page holds back the GLB for the in-page 3D view until you return to the page or tap it, so the two downloads never compete. Android and desktop load the GLB first, since Scene Viewer and WebXR need it. Browsers that require a user gesture keep **View in your space** as a fallback. Desktop browsers show the interactive 3D model.
@@ -21,7 +21,7 @@ Open a page in Chrome on Android or Safari on iPhone/iPad. Each page attempts to
 | Santa 02 | 149k → 115k | 4.7 MB | 5.9 MB |
 | Santa 03 | 232k → 161k | 7.2 MB | 8.8 MB |
 | Santa 04 | 153k → 119k | 5.6 MB | 6.2 MB |
-| Santa 05 | 134k → 99k | 4.3 MB | 5.2 MB |
+| Santa 05 | 137k → 102k | 4.4 MB | 5.5 MB |
 | Santa 06 | 153k → 119k | 5.0 MB | 6.0 MB |
 
 ## How the editions are built
@@ -89,7 +89,7 @@ Each is modelled on its photo in `photos/` by its own `build_santaNN.py`, using 
 | --- | --- | --- |
 | Santa 03 | `03 Bouquet Cafe Santa.jpg` | A big white Bouquet Cafe mug (wrapped lettering and lotus mark) with curling steam, a dense hand bouquet of roses, tulips, asters, daisies and lavender, and a crimson velvet sack brimming with flowers. Six seconds: he lifts the mug, breathes in the steam, lowers it; the bouquet sways throughout. |
 | Santa 04 | `04 Landmark on Robson Santa.jpg` | A little fir tree with needle sprigs, red and green baubles, holly, a spiral of glowing fairy lights and a brass finial carrying the lit Landmark on Robson sign (tower in an arch, outlined lettering). Five seconds: he lifts and rocks the tree while looking up at the sign. |
-| Santa 05 | `05 Mello Santa.jpg` | A sugared brioche with a cream ridge, piped swirls, a strawberry and a scalloped bite showing the filling, and a mustard velvet Mello sack (stacked outline lettering, jute rope) holding gifts, a gingerbread figure and a teddy. Five seconds: he raises the bun for a bite, lowers it and chews. |
+| Santa 05 | `05 Mello Santa.jpg` | A sugared brioche with a cream ridge, piped swirls, a strawberry, and a piece of crust over the top that he bites off (its own `chunk` bone shrinks into his mouth, leaving a scalloped bite showing the crumb and cream filling), and a mustard velvet Mello sack (stacked outline lettering, jute rope) holding gifts, a gingerbread figure and a teddy. Eight seconds: he lifts the whole bun from his chest; it rolls bite-side up and rises to wherever his lower lip is as his head leans in, he bites the top, then lowers the bitten bun and chews, and holds it for three more seconds (`REST` in the build script). The piece reappears on the last frame so the loop restarts with a whole bun. |
 | Santa 06 | `06 Yunqueen Santa.jpg` | A porcelain Yunqueen Rice Noodles bowl with broth, wavy rice noodles, pork mince, cilantro, scallions and chilli oil, steam, and the yellow plush duck with its deadpan eyes. Five seconds: he lifts the bowl to smell it while the duck sways. |
 
 Steam materials are translucent; the exporter patches their opacity into the USDZ as for Santa 01. The tests check that the arm chains stay connected and ride the swaying chest, both gloves stay locked to their props, props are skinned rigidly, the loop closes, and the GLB, USDZ and page agree.
