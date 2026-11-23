@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Scene Viewer test</title>
+  <script type="module" src="https://cdn.jsdelivr.net/npm/@google/model-viewer@4.0.0/dist/model-viewer.min.js"></script>
+  <style>
+    :root { --bg: #f6f3ee; --fg: #1d1d1f; --muted: #6b6b70; --accent: #a3262d; --card: #fff; --line: #0002; }
+    @media (prefers-color-scheme: dark) {
+      :root { --bg: #14161a; --fg: #f2f2f2; --muted: #a0a3aa; --accent: #f07177; --card: #1f2228; --line: #fff2; }
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; padding: 16px; background: var(--bg); color: var(--fg);
+           font: 15px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+    h1 { font-size: 20px; margin: 0 0 4px; }
+    p { margin: 0 0 12px; color: var(--muted); }
+    ol { list-style: none; padding: 0; margin: 0; display: grid; gap: 10px; }
+    li { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 12px; }
+    li b { display: block; }
+    li span { color: var(--muted); font-size: 13px; }
+    a.go, button.go { display: inline-block; margin-top: 8px; padding: 10px 16px; border: 0; border-radius: 999px;
+                      background: var(--accent); color: #fff; font: 600 15px system-ui, sans-serif; text-decoration: none; }
+    #result { display: none; margin: 0 0 12px; padding: 12px; border-radius: 12px; background: #c0392b; color: #fff; }
+    model-viewer { width: 100%; height: 220px; margin-top: 8px; }
+    code { font-size: 11px; word-break: break-all; color: var(--muted); }
+  </style>
+</head>
+<body>
+  <h1>Scene Viewer test</h1>
+  <p>Tap each button in turn on the Android phone. For each one, note whether AR opens and lets you place the model, or closes straight away.</p>
+  <div id="result" role="status"></div>
+  <ol id="tests"></ol>
+  <ol style="margin-top:10px"><li id="webxr">
+    <b>F · Santa 01 in Chrome's own AR (WebXR), no Scene Viewer</b>
+    <span>Wait for Santa to appear, then tap the button.</span>
+    <model-viewer src="../santa01.glb?v=chai-5" ar ar-modes="webxr" ar-placement="floor" camera-controls autoplay
+      alt="Santa 01">
+      <button slot="ar-button" class="go">Open F</button>
+    </model-viewer>
+  </li></ol>
+  <p style="margin-top:16px">Phone: <code id="ua"></code></p>
+
+  <script>
+    const page = location.href.split('#')[0];
+    const base = new URL('..', page);
+    const santa = new URL('santa01-android.glb', base).href;
+    const santaFull = new URL('santa01.glb', base).href;
+    const astronaut = 'https://modelviewer.dev/shared-assets/models/Astronaut.glb';
+    const SEARCH = 'com.google.android.googlequicksearchbox';
+    const ARCORE = 'com.google.ar.core';
+
+    function intent(id, file, mode, pkg) {
+      const fallback = encodeURIComponent(page + '#fallback-' + id);
+      return `intent://arvr.google.com/scene-viewer/1.0?file=${encodeURIComponent(file)}&mode=${mode}` +
+        `#Intent;scheme=https;package=${pkg};action=android.intent.action.VIEW;S.browser_fallback_url=${fallback};end;`;
+    }
+
+    const tests = [
+      ['A', 'Google’s sample astronaut, AR', 'Checks Scene Viewer itself works on this phone.', intent('A', astronaut, 'ar_preferred', SEARCH)],
+      ['B', 'Santa 01 (Android file), 3D only', 'No camera: checks Scene Viewer can load Santa at all.', intent('B', santa, '3d_only', SEARCH)],
+      ['C', 'Santa 01 (Android file), AR', 'The plainest possible AR launch of Santa.', intent('C', santa, 'ar_preferred', SEARCH)],
+      ['D', 'Santa 01 (Android file), AR via Google Play Services for AR', 'Same file, the other Scene Viewer app.', intent('D', santa, 'ar_only', ARCORE)],
+      ['E', 'Santa 01 (full desktop file), 3D only', 'Checks whether the original file loads in 3D.', intent('E', santaFull, '3d_only', SEARCH)],
+    ];
+    const list = document.getElementById('tests');
+    for (const [id, title, note, href] of tests) {
+      const li = document.createElement('li');
+      li.innerHTML = `<b>${id} · ${title}</b><span>${note}</span><br><a class="go" href="${href}">Open ${id}</a>`;
+      list.append(li);
+    }
+
+    // Scene Viewer that cannot start sends the browser back here with #fallback-X.
+    const showResult = () => {
+      const m = location.hash.match(/^#fallback-(\w)$/);
+      const box = document.getElementById('result');
+      box.style.display = m ? 'block' : 'none';
+      if (m) box.textContent = `Test ${m[1]}: the phone could not start Scene Viewer (Chrome used the fallback page).`;
+    };
+    addEventListener('hashchange', showResult);
+    showResult();
+    document.getElementById('ua').textContent = navigator.userAgent;
+
+    document.querySelector('model-viewer').addEventListener('ar-status', e => {
+      if (e.detail.status === 'failed') {
+        const box = document.getElementById('result');
+        box.style.display = 'block';
+        box.textContent = 'Test F: Chrome’s WebXR AR failed to start.';
+      }
+    });
+  </script>
+</body>
+</html>
