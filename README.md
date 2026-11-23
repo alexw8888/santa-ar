@@ -18,88 +18,72 @@ Open a page in Chrome on Android or Safari on iPhone/iPad. Each page attempts to
 | Edition | Triangles (scene → export) | GLB | USDZ |
 | --- | --- | --- | --- |
 | Santa 01 | 135k → 101k | 4.4 MB | 3.6 MB |
-| Santa 02 | 149k → 115k | 4.7 MB | 5.6 MB |
-| Santa 03 | 232k → 161k | 7.1 MB | 8.3 MB |
-| Santa 04 | 153k → 119k | 5.6 MB | 5.9 MB |
-| Santa 05 | 134k → 99k | 4.2 MB | 5.0 MB |
-| Santa 06 | 153k → 119k | 4.9 MB | 5.8 MB |
+| Santa 02 | 149k → 115k | 4.7 MB | 5.9 MB |
+| Santa 03 | 232k → 161k | 7.2 MB | 8.8 MB |
+| Santa 04 | 153k → 119k | 5.6 MB | 6.2 MB |
+| Santa 05 | 134k → 99k | 4.3 MB | 5.2 MB |
+| Santa 06 | 153k → 119k | 5.0 MB | 6.0 MB |
 
-## Santa 01
+## How the editions are built
 
-A rigged Santa modelled on the reference photo (`photos/`), with a 12.5-second loop: he pours chai from a brass kettle into a cutting-chai glass (timed stream, rising chai level), then raises the glass to his lips, tips it and drinks the chai, and returns to the initial pose.
+Every edition starts from one base Santa, so a fix to Santa himself reaches all of them:
 
-The published animation is made in two steps. `build_santa01.py` builds the character with a pour-and-aroma animation (`Santa01_Pour_and_Smell`); `santa01_final_animation.py` then re-bakes it into `Santa01_Natural_Shoulders_Drink_Cup_Tilt`, which adds:
+- `build_santa_base.py` (with `santa_model.py`, the procedural character) writes `santa_base.blend`: the character with two cupped gloves (the right one mirrors the left), no props and no animation, packed with its generated textures. It is never published.
+- `santa_motion.py` adds secondary-motion bones to the base (coat hem, both sleeves, hat tip) with the garment weights blended in, and provides `sway`: a gentle, loopable body sway with cloth follow-through and foot settling.
+- `santa_kit.py` opens the base, renames it `SantaNN`, adds the edition's prop bones, joins its props, bakes its loop and saves `santaNN.blend` with previews and the page poster. Every bake adds the shared sway first, then solves the arms from the swaying shoulders, so held props stay locked in the gloves.
+- `export_santa.py` writes each edition's `docs/santaNN.glb` and `docs/santaNN.usdz`.
 
-- Subtle secondary motion in the body, coat hem, sleeves, feet and hat tip, with the kettle following the right hand.
-- Ease in and out on the original gestures, without changing the kettle's path.
-- A slight torso counterlean as the kettle lifts, raising the kettle-side shoulder and dropping the glass-side one.
-- The glass rising to his lips and tilting about 17°, with the left glove gripping it rigidly.
-- Chai that fills as it is poured and drains as he drinks, so the glass is empty at both ends of the loop and playback wraps without a pop.
-
-- A portly build: a round belly pushed forward over the belt, broad shoulders and thick sleeves and trousers.
-- A wide stance: the legs splay out from the hips and the boots turn outward, as in the photo.
-- He watches the glass, as in the photo: each eye has its own bone (parented to the head) that aims the iris at the glass every frame, and his head turns and nods to follow it through the pour and the aroma gesture.
-- The face grins with a broad open mouth (lips, upper teeth, tongue) whose corners lift into the cheeks, smile creases, wide eyes, bushy arched eyebrows, wire spectacles, a big red nose and round rosy cheeks.
-- The beard is wide and full, made of wavy, flattened locks; the moustache sweeps up into the cheeks; sideburns join the hat to the beard.
-- The red garments use a generated photographic velvet swatch with fiber normals, varying roughness and soft sheen, at a consistent physical UV scale. Core color/normal/roughness maps also support AR viewers that do not render the optional sheen extension.
-- The fur trim is plush, with soft clumps and fibers; the pompom is round and fluffy.
-- Brown leather gloves; worn mid-brown work boots with thick soles, heels, toe-cap seams and brass ankle buckles; a wide leather belt with a large brass buckle.
-- The golden brass kettle's large beaded oval cartouche carries raised "Chaiiwala" and "of London" lettering with a small kettle-and-glass emblem, modelled as geometry (Blender's built-in font) and wrapped to the kettle's curve.
-- Generated textures are converted from linear to sRGB when written; the scene keeps them at full resolution (velvet 1024 px), and the exporter halves them into JPEG for the GLB and USDZ.
-- AR Quick Look fixes: the exporter patches the glass and steam opacity into the USDZ (Blender writes every UsdPreviewSurface as opaque), and the mouth cavity faces the viewer because Quick Look culls back faces even on double-sided meshes.
-
-Files:
-
-- `build_santa01.py` generates `santa01.blend` and packs the textures into it. Temporary texture images in `generated/` are recreated on each build. `santa01.blend` keeps the pour-and-aroma animation because later editions are built from it.
-- `santa01_final_animation.py` opens `santa01.blend` and writes the drinking animation to a new `santa01_FINAL_ANIMATED.blend` beside it (git-ignored); it never overwrites its source and refuses a file it has already animated. It also keeps each stage's earlier action as a backup.
-- `assets/textures/santa01-velvet-source.png` is the original generated fabric swatch; the build creates optimized runtime maps from it.
-- `export_santa.py` exports the named scene into `docs/santa01.glb` and `docs/santa01.usdz`.
-- `docs/santa01b.html` is the viewer; `docs/santa01-poster.webp` is its loading poster.
-- `previews/santa01-*.png` show the front view, face, kettle lettering, fabric close-up and the ready, pour and aroma poses of the built (pre-drinking) animation.
-
-Use an official Blender build with glTF and USD support (tested on 5.3). Build, animate, then export only the final action (the `--python-expr` step drops the stage backups, which would otherwise be exported as extra animations):
+Build the base first, then any edition; rebuild every edition after changing the base. Use an official Blender build with glTF and USD support (tested on 5.3), and run from the repository root:
 
 ```sh
+blender -b --factory-startup --python-exit-code 1 -P build_santa_base.py
 blender -b --factory-startup --python-exit-code 1 -P build_santa01.py -- previews
-blender -b santa01.blend --python-exit-code 1 -P santa01_final_animation.py
-blender -b santa01_FINAL_ANIMATED.blend --python-exit-code 1 --python-expr "import bpy; a = bpy.data.objects['Santa01_Rig'].animation_data.action; [bpy.data.actions.remove(x) for x in list(bpy.data.actions) if x != a]" -P export_santa.py -- santa01
-```
-
-Validate the model, loop, prop attachments, eye tracking and exports with the test below. It checks the built `santa01.blend`, then checks that the GLB carries only the final drinking action and that `docs/santa01b.html` requests it:
-
-```sh
+blender -b santa01.blend --python-exit-code 1 -P export_santa.py -- santa01
 blender -b --python-exit-code 1 -P tests/validate_santa01.py
 ```
 
-The build also runs with Blender as a Python module (`pip install bpy`): `python3 build_santa01.py -- previews`. Add `quick` after the preview folder to skip the animation bake and render only the face, front and kettle previews.
+Replace `01` with the edition number for the others. Add shot names after the preview folder (for example `-- previews front`) to render only those previews; the `front` shot also writes the page poster. Generated texture images in `generated/` are recreated on each build; the `.blend` files pack them.
 
-Physical phone AR performance and native viewer behavior should also be checked on the target devices.
+## The base Santa
 
-Create later editions as separate numbered pages and asset sets: `santa02.html`, `santa02.glb`, `santa02.usdz`, and so on. Give each edition a matching Blender scene/rig name and its own animation. Never overwrite an earlier edition’s assets when adding a new action. The versioned exporter requires an explicit name to avoid accidentally replacing another edition.
+Modelled on the Santa 01 reference photo (`photos/01 Chaiiwala Santa.jpg`):
+
+- A portly build: a round belly pushed forward over the belt, broad shoulders and thick sleeves and trousers.
+- A wide stance: the legs splay out from the hips and the boots turn outward, as in the photo.
+- Each eye has its own bone (parented to the head), so editions aim the irises at what Santa is looking at while his head turns and nods part of the way.
+- The face grins with a broad open mouth (lips, upper teeth, tongue) whose corners lift into the cheeks, smile creases, wide eyes, bushy arched eyebrows, wire spectacles, a big red nose and round rosy cheeks.
+- The beard is wide and full, made of wavy, flattened locks; the moustache sweeps up into the cheeks; sideburns join the hat to the beard.
+- The red garments use a generated photographic velvet swatch (`assets/textures/santa01-velvet-source.png`) with fiber normals, varying roughness and soft sheen, at a consistent physical UV scale. Core color/normal/roughness maps also support AR viewers that do not render the optional sheen extension.
+- The fur trim is plush, with soft clumps and fibers; the pompom is round and fluffy.
+- Brown leather gloves; worn mid-brown work boots with thick soles, heels, toe-cap seams and brass ankle buckles; a wide leather belt with a large brass buckle.
+- Generated textures are converted from linear to sRGB when written; the scene keeps them at full resolution (velvet 1024 px), and the exporter halves them into JPEG for the GLB and USDZ.
+- AR Quick Look fixes: the mouth cavity faces the viewer because Quick Look culls back faces even on double-sided meshes, and the exporter patches translucent materials' opacity into the USDZ (Blender writes every UsdPreviewSurface as opaque).
+
+## Santa 01
+
+`build_santa01.py` adds a golden brass kettle in the right glove (its own kettle grip replaces the base's cupped right glove) and a cutting-chai glass in the cupped left glove. The kettle's large beaded oval cartouche carries raised "Chaiiwala" and "of London" lettering with a small kettle-and-glass emblem, modelled as geometry (Blender's built-in font) and wrapped to the kettle's curve.
+
+The 12.5-second loop (`Santa01_Natural_Shoulders_Drink_Cup_Tilt`) is computed in one pass per frame, in layers:
+
+1. The pour: the kettle lifts and pours a timed stream into the glass, then lowers; the glass rises toward his face; his head and eyes follow the glass. It is evaluated at an eased time, so each gesture eases in and out.
+2. The shared sway, with the kettle, stream and glass following the gloves that hold them.
+3. A subtle torso counterlean while the kettle is up: the kettle-side shoulder rises and the glass-side one drops, and the arms re-solve to the same wrists.
+4. The sip: the glass comes to his lips and tips about 17°, the left glove gripping it. The chai fills while it is poured (the stream always reaches its surface) and drains while he sips, so the glass is empty at both ends of the loop and playback wraps without a pop; the steam fades with the last sip.
+
+`previews/santa01-*.png` show the front view (also the poster), the pour and the sip, the face, the kettle lettering and a fabric close-up. The test checks the rigid grips, arm joints, stream, chai level, the sip, the eyes following the glass, loop closure, and that the GLB, USDZ and `docs/santa01b.html` agree.
 
 ## Santa 02
 
-Modelled on `photos/02 Aisle24 Santa.jpg`. Santa cradles a scored baguette, spinach, tomatoes, stacked yogurt cups, bagged fruit, flour, milk and snacks. The open canvas Aisle24 tote stands beside his right boot. Both hands follow the groceries through a five-second loop.
-
-`build_santa02.py` uses the packed `santa01.blend` made by `build_santa01.py` as its character source. The grocery geometry, materials, pose and animation are built specifically for this edition. Run from the repository root:
-
-```sh
-blender -b --factory-startup --python-exit-code 1 -P build_santa02.py -- previews
-blender -b santa02.blend --python-exit-code 1 -P export_santa.py -- santa02
-blender -b --python-exit-code 1 -P tests/validate_santa02.py
-```
-
-The build writes the editable scene, three preview PNGs and the viewer poster. The exporter writes the GLB and USDZ used by `docs/santa02.html`.
+Modelled on `photos/02 Aisle24 Santa.jpg`. Santa cradles a scored baguette, spinach, tomatoes, stacked yogurt cups, bagged fruit, flour, milk and snacks. The open canvas Aisle24 tote stands beside his right boot. Both hands follow the groceries through a five-second loop. `build_santa02.py` models the groceries itself and uses `santa_kit.py` to start from the base and bake the loop.
 
 ## Santa 03 to 06
 
-Each later edition is modelled on its photo in `photos/` and built from the packed `santa01.blend` by its own `build_santaNN.py`. They share `santa_kit.py`, which:
+Each is modelled on its photo in `photos/` by its own `build_santaNN.py`, using `santa_kit.py` to:
 
-- opens the Santa 01 character, removes the chai props, mirrors the cupped glove onto the right hand and adds the edition's prop bones;
-- models props from lathes, tubes, ellipsoids, two-sided petals/leaves and typeset lettering (flat, or wrapped around a mug or bowl), each bound rigidly to one bone and joined into the character mesh;
-- recolours Santa's velvet and plush textures for new fabrics, keeping their pile;
-- poses the arms by solving each elbow from the fixed shoulder to a wrist placed so the cupped glove wraps the prop, turns the head part way toward a target and aims the eye bones the rest of the way;
-- bakes every frame into ordinary bone keys and saves the scene, previews and poster.
+- model props from lathes, tubes, ellipsoids, two-sided petals/leaves and typeset lettering (flat, or wrapped around a mug or bowl), each bound rigidly to one bone and joined into the character mesh;
+- recolour Santa's velvet and plush textures for new fabrics, keeping their pile;
+- pose the arms by solving each elbow from the shoulder to a wrist placed so the cupped glove wraps the prop, turn the head part way toward a target and aim the eye bones the rest of the way;
+- bake every frame, with the shared sway, into ordinary bone keys and save the scene, previews and poster.
 
 | Edition | Photo | Props and loop |
 | --- | --- | --- |
@@ -108,14 +92,8 @@ Each later edition is modelled on its photo in `photos/` and built from the pack
 | Santa 05 | `05 Mello Santa.jpg` | A sugared brioche with a cream ridge, piped swirls, a strawberry and a scalloped bite showing the filling, and a mustard velvet Mello sack (stacked outline lettering, jute rope) holding gifts, a gingerbread figure and a teddy. Five seconds: he raises the bun for a bite, lowers it and chews. |
 | Santa 06 | `06 Yunqueen Santa.jpg` | A porcelain Yunqueen Rice Noodles bowl with broth, wavy rice noodles, pork mince, cilantro, scallions and chilli oil, steam, and the yellow plush duck with its deadpan eyes. Five seconds: he lifts the bowl to smell it while the duck sways. |
 
-Steam materials are translucent; the exporter patches their opacity into the USDZ as for Santa 01. Run from the repository root, replacing `03` with the edition number:
+Steam materials are translucent; the exporter patches their opacity into the USDZ as for Santa 01. The tests check that the arm chains stay connected and ride the swaying chest, both gloves stay locked to their props, props are skinned rigidly, the loop closes, and the GLB, USDZ and page agree.
 
-```sh
-blender -b --factory-startup --python-exit-code 1 -P build_santa03.py -- previews
-blender -b santa03.blend --python-exit-code 1 -P export_santa.py -- santa03
-blender -b --python-exit-code 1 -P tests/validate_santa03.py
-```
-
-Add shot names after the preview folder (for example `-- previews front`) to render only those previews. The tests check that the arm chains stay connected to fixed shoulders, both gloves stay locked to their props, props are skinned rigidly, the loop closes, and the GLB, USDZ and page agree.
+Physical phone AR performance and native viewer behavior should also be checked on the target devices. Create later editions as separate numbered pages and asset sets (`santa07.html`, `santa07.glb`, `santa07.usdz`) with a matching scene/rig name and their own animation; the versioned exporter requires an explicit name so it never overwrites another edition's assets.
 
 Commit the generated models, page, poster, and previews to `main` to publish. No backend or custom build service is required.

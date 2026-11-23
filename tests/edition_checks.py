@@ -34,11 +34,14 @@ def check(version, action, frames, holds, props, translucent=False):
     for frame in range(1, frames + 1):
         scene.frame_set(frame)
         pose = {b.name: b.matrix.copy() for b in rig.pose.bones}
+        chest = rig.pose.bones['chest']
+        chest_deform = chest.matrix @ chest.bone.matrix_local.inverted()
         for side in 'LR':
             upper, fore, hand = [rig.pose.bones[n + '.' + side] for n in ('upper_arm', 'forearm', 'hand')]
             assert (upper.tail - fore.head).length < .0001, (frame, side, 'elbow')
             assert (fore.tail - hand.head).length < .0001, (frame, side, 'wrist')
-            assert (upper.head - rig.data.bones[upper.name].head_local).length < .0001, (frame, side, 'shoulder')
+            # The shoulders ride the swaying chest.
+            assert (upper.head - chest_deform @ upper.bone.head_local).length < .0001, (frame, side, 'shoulder')
         for hand, prop in holds:
             relative = pose[prop].inverted() @ pose[hand]
             if frame == 1:

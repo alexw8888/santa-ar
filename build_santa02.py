@@ -1,4 +1,4 @@
-"""Build the Aisle24 edition from the packed character made by build_santa01.py.
+"""Build the Aisle24 edition from the base character made by build_santa_base.py.
 
 blender -b --factory-startup --python-exit-code 1 -P build_santa02.py -- previews
 The optional directory receives front and lifted poses and a detail of the tote.
@@ -15,62 +15,13 @@ import numpy as np
 from mathutils import Matrix, Quaternion, Vector
 
 ROOT = Path(__file__).resolve().parent
+sys.path.insert(0, str(ROOT))
+import santa_kit as kit  # noqa: E402
+
 ARGS = sys.argv[sys.argv.index('--') + 1:] if '--' in sys.argv else []
 PHOTO = 'photos/02 Aisle24 Santa.jpg'
-bpy.ops.wm.open_mainfile(filepath=str(ROOT / 'santa01.blend'))
-scene = bpy.context.scene
-scene.name = 'Aisle24'
-scene['Reference'] = PHOTO
-scene.frame_start, scene.frame_end = 1, 121
-rig = bpy.data.objects['Santa01_Rig']
-santa = bpy.data.objects['Santa01']
-rig.animation_data_clear()
-rig.name = rig.data.name = 'Santa02_Rig'
-santa.name, santa.data.name = 'Santa02', 'Santa02_Mesh'
-for bone in rig.pose.bones:
-    bone.matrix_basis = Matrix.Identity(4)
-
-# Keep the original tailoring and skin weights. Mirror the cupped glove for the
-# second hand so both palms can support the shopping from opposite sides.
-tea = ('cup', 'liquid', 'aroma', 'stream', 'kettle')
-mesh = bmesh.new()
-mesh.from_mesh(santa.data)
-skin = mesh.verts.layers.deform.active
-groups = santa.vertex_groups
-discard = {groups[n].index for n in (*tea, 'hand.R')}
-bmesh.ops.delete(mesh, geom=[v for v in mesh.verts if discard.intersection(v[skin].keys())], context='VERTS')
-left = groups['hand.L'].index
-right = groups['hand.R'].index
-left_bind = rig.data.bones['hand.L'].head_local.copy()
-right_bind = rig.data.bones['hand.R'].head_local.copy()
-glove = [f for f in mesh.faces if all(v[skin].get(left, 0) > .999 for v in f.verts)]
-copy = bmesh.ops.duplicate(mesh, geom=glove)['geom']
-for v in (item for item in copy if isinstance(item, bmesh.types.BMVert)):
-    p = v.co - left_bind
-    v.co = right_bind + Vector((-p.x, p.y, p.z))
-    del v[skin][left]
-    v[skin][right] = 1
-bmesh.ops.reverse_faces(mesh, faces=[f for f in copy if isinstance(f, bmesh.types.BMFace)])
-mesh.to_mesh(santa.data)
-mesh.free()
-for name in tea:
-    groups.remove(groups[name])
-bpy.context.view_layer.objects.active = rig
-bpy.ops.object.mode_set(mode='EDIT')
-for name in tea:
-    rig.data.edit_bones.remove(rig.data.edit_bones[name])
-load = rig.data.edit_bones.new('groceries')
-load.head, load.tail = (0, -.41, 1.09), (0, -.41, 1.27)
-load.parent = rig.data.edit_bones['root']
-bpy.ops.object.mode_set(mode='OBJECT')
-used = {p.material_index for p in santa.data.polygons}
-for i in reversed(range(len(santa.data.materials))):
-    if i not in used:
-        santa.data.materials.pop(index=i)
-for action in list(bpy.data.actions):
-    if action.users <= int(action.use_fake_user):
-        bpy.data.actions.remove(action)
-bpy.data.orphans_purge(do_recursive=True)
+# Both cupped gloves support the shopping from opposite sides.
+scene, rig, santa = kit.start(2, 'Aisle24', PHOTO, [('groceries', Vector((0, -.41, 1.09)), Vector((0, -.41, 1.27)), 'root')])
 
 
 def material(name, hex_color, rough=.54, metal=0):
@@ -420,55 +371,26 @@ bpy.context.view_layer.objects.active=santa
 bpy.ops.object.join()
 
 
-def rigid(name, point, rotation):
-    bone=rig.data.bones[name]
-    rig.pose.bones[name].matrix=(Matrix.Translation(point) @ rotation.to_4x4()
-        @ Matrix.Translation(-bone.head_local) @ bone.matrix_local)
-    bpy.context.view_layer.update()
-
-
-def bend_arm(side, wrist):
-    upper, fore = [rig.data.bones[n+'.'+side] for n in ('upper_arm','forearm')]
-    shoulder=upper.head_local
-    direction=(wrist-shoulder).normalized()
-    dist=(wrist-shoulder).length
-    along=(upper.length**2-fore.length**2+dist**2)/(2*dist)
-    guide=Vector((1 if side=='L' else -1,.08,-.5))
-    elbow=(shoulder+along*direction+(guide-direction*guide.dot(direction)).normalized()
-           * math.sqrt(upper.length**2-along**2))
-    for bone,a,b in ((upper,shoulder,elbow),(fore,elbow,wrist)):
-        rigid(bone.name,a,(bone.tail_local-bone.head_local).rotation_difference(b-a).to_matrix())
-
-
-# Both grips and the bundle share one rigid displacement. The elbows solve
-# back to fixed shoulders as he lifts, checks his shopping, and settles again.
-armature=santa.modifiers.get('Armature')
-armature.show_viewport=False
-for frame in range(1,scene.frame_end+1):
-    scene.frame_set(frame)
-    phase=math.tau*(frame-1)/(scene.frame_end-1)
-    lift=(1-math.cos(phase))*.5
+# Both grips and the bundle share one rigid displacement. The elbows solve back to the
+# shoulders, which ride the shared body sway, as he lifts, checks his shopping, and settles again.
+def pose_at(t):
+    lift=(1-math.cos(math.tau*t))*.5
     delta=Vector((.016*lift,.012*lift,.082*lift))
     identity=Matrix.Identity(3)
-    rigid('groceries',rig.data.bones['groceries'].head_local+delta,identity)
-    animated=['groceries','head','eye.L','eye.R']
+    kit.rigid('groceries',rig.data.bones['groceries'].head_local+delta,identity)
     for side,sign in [('L',1),('R',-1)]:
         wrist=Vector((sign*.322,-.415,1.125))+delta
-        bend_arm(side,wrist)
-        rigid('hand.'+side,wrist,identity)
-        animated.extend(n+'.'+side for n in ('upper_arm','forearm','hand'))
+        kit.reach(side,wrist)
+        kit.rigid('hand.'+side,wrist,identity)
     rig.pose.bones['head'].rotation_quaternion=(Quaternion((0,1,0),-.055-.12*lift)
         @ Quaternion((1,0,0),.045+.14*lift))
     for side in ('L','R'):
         rig.pose.bones['eye.'+side].rotation_quaternion=Quaternion((1,0,0),-.06-.11*lift)
-    for name in animated:
-        bone=rig.pose.bones[name]
-        bone.keyframe_insert('rotation_quaternion',frame=frame,group=name)
-        if name not in ('head','eye.L','eye.R'):
-            bone.keyframe_insert('location',frame=frame,group=name)
-armature.show_viewport=True
-rig.animation_data.action.name='Santa02_Grocery_Lift'
-scene.frame_set(1)
+
+
+kit.bake('Santa02_Grocery_Lift', 121, pose_at,
+         ['groceries','head','eye.L','eye.R']+[n+'.'+s for s in 'LR' for n in ('upper_arm','forearm','hand')],
+         activity=lambda t: (1-math.cos(math.tau*t))*.5)
 cam=scene.camera
 
 

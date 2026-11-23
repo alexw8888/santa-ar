@@ -1,4 +1,4 @@
-"""Build the Mello edition from the packed character made by build_santa01.py.
+"""Build the Mello edition from the base character made by build_santa_base.py.
 
 blender -b --factory-startup --python-exit-code 1 -P build_santa05.py -- previews
 The optional directory receives front, bite, bun and sack previews and the page poster.

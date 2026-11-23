@@ -1,4 +1,4 @@
-"""Build the Yunqueen edition from the packed character made by build_santa01.py.
+"""Build the Yunqueen edition from the base character made by build_santa_base.py.
 
 blender -b --factory-startup --python-exit-code 1 -P build_santa06.py -- previews
 The optional directory receives front, aroma, bowl and duck previews and the page poster.

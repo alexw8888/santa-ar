@@ -1,9 +1,9 @@
-"""Shared building blocks for the Santa editions made from the packed Santa 01 character.
+"""Shared building blocks for the Santa editions made from the base character.
 
-A build_santaNN.py script calls `start` (opens santa01.blend, strips the chai props, mirrors the
-cupped glove onto the right hand and adds the edition's prop bones), models its props with the
-geometry helpers below, joins them with `attach`, bakes its loop with `bake` and finally calls
-`finish` to save the .blend, previews and poster.
+A build_santaNN.py script calls `start` (opens santa_base.blend, renames Santa to SantaNN and adds
+the edition's prop bones), models its props with the geometry helpers below, joins them with
+`attach`, bakes its loop with `bake` (which adds the shared secondary sway from santa_motion.py)
+and finally calls `finish` to save the .blend, previews and poster.
 
 Props are modelled in world space at their rest placement. Each vertex is bound rigidly to the
 bone that is active in `bound(...)`, so posing a prop bone with `rigid` moves the prop as one piece.
@@ -20,8 +20,10 @@ import numpy as np
 from mathutils import Matrix, Quaternion, Vector
 
 ROOT = Path(__file__).resolve().parent
+sys.path.insert(0, str(ROOT))
+import santa_motion  # noqa: E402
+
 ARGS = sys.argv[sys.argv.index('--') + 1:] if '--' in sys.argv else []
-TEA = ('cup', 'liquid', 'aroma', 'stream', 'kettle')
 EYES = Vector((0, -.13, 1.79))
 EYE_LIMIT = math.radians(19)
 # The cupped left glove wraps a vertical cylinder (about 5 cm radius) whose axis sits at this offset
@@ -35,48 +37,24 @@ NAME = ''
 
 # ----------------------------------------------------------------------------- character
 def start(number, scene_name, photo, prop_bones):
-    """Open the Santa 01 character, rename it SantaNN and add (name, head, tail, parent) bones."""
+    """Open the base character, rename it SantaNN and add (name, head, tail, parent) bones.
+
+    The base has two cupped gloves (the right one mirrors the left), so both hands can wrap a prop
+    from opposite sides, and the secondary-motion bones that `bake` animates."""
     global scene, rig, santa, NAME
     NAME = f'Santa{number:02d}'
-    bpy.ops.wm.open_mainfile(filepath=str(ROOT / 'santa01.blend'))
+    bpy.ops.wm.open_mainfile(filepath=str(ROOT / 'santa_base.blend'))
     scene = bpy.context.scene
     scene.name = scene_name
     scene['Reference'] = photo
-    rig = bpy.data.objects['Santa01_Rig']
-    santa = bpy.data.objects['Santa01']
-    rig.animation_data_clear()
+    rig = bpy.data.objects['Santa_Rig']
+    santa = bpy.data.objects['Santa']
     rig.name = rig.data.name = NAME + '_Rig'
     santa.name, santa.data.name = NAME, NAME + '_Mesh'
     for bone in rig.pose.bones:
         bone.matrix_basis = Matrix.Identity(4)
-
-    # Keep the tailoring and skin weights; drop the kettle, glass and kettle hand, then mirror the
-    # cupped glove so both hands can wrap a prop from opposite sides.
-    mesh = bmesh.new()
-    mesh.from_mesh(santa.data)
-    skin = mesh.verts.layers.deform.active
-    groups = santa.vertex_groups
-    discard = {groups[n].index for n in (*TEA, 'hand.R')}
-    bmesh.ops.delete(mesh, geom=[v for v in mesh.verts if discard.intersection(v[skin].keys())], context='VERTS')
-    left, right = groups['hand.L'].index, groups['hand.R'].index
-    left_bind = rig.data.bones['hand.L'].head_local.copy()
-    right_bind = rig.data.bones['hand.R'].head_local.copy()
-    glove = [f for f in mesh.faces if all(v[skin].get(left, 0) > .999 for v in f.verts)]
-    copy = bmesh.ops.duplicate(mesh, geom=glove)['geom']
-    for v in (item for item in copy if isinstance(item, bmesh.types.BMVert)):
-        p = v.co - left_bind
-        v.co = right_bind + Vector((-p.x, p.y, p.z))
-        del v[skin][left]
-        v[skin][right] = 1
-    bmesh.ops.reverse_faces(mesh, faces=[f for f in copy if isinstance(f, bmesh.types.BMFace)])
-    mesh.to_mesh(santa.data)
-    mesh.free()
-    for name in TEA:
-        groups.remove(groups[name])
     bpy.context.view_layer.objects.active = rig
     bpy.ops.object.mode_set(mode='EDIT')
-    for name in TEA:
-        rig.data.edit_bones.remove(rig.data.edit_bones[name])
     for name, head, tail, parent in prop_bones:
         bone = rig.data.edit_bones.new(name)
         bone.head, bone.tail = head, tail
@@ -84,14 +62,6 @@ def start(number, scene_name, photo, prop_bones):
     bpy.ops.object.mode_set(mode='OBJECT')
     for bone in rig.pose.bones:
         bone.rotation_mode = 'QUATERNION'
-    used = {p.material_index for p in santa.data.polygons}
-    for i in reversed(range(len(santa.data.materials))):
-        if i not in used:
-            santa.data.materials.pop(index=i)
-    for action in list(bpy.data.actions):
-        if action.users <= int(action.use_fake_user):
-            bpy.data.actions.remove(action)
-    bpy.data.orphans_purge(do_recursive=True)
     return scene, rig, santa
 
 
@@ -431,10 +401,17 @@ def rigid(name, point, rotation=None):
     bpy.context.view_layer.update()
 
 
+def attached(name):
+    """Where bone `name`'s head sits on its posed parent (e.g. a shoulder riding the swaying chest)."""
+    bone = rig.data.bones[name]
+    parent = rig.pose.bones[bone.parent.name]
+    return parent.matrix @ bone.parent.matrix_local.inverted() @ bone.head_local
+
+
 def reach(side, wrist):
-    """Two-bone arm from the fixed shoulder to `wrist`, elbow out and down."""
+    """Two-bone arm from the shoulder (where the posed chest carries it) to `wrist`, elbow out and down."""
     upper, fore = [rig.data.bones[n + '.' + side] for n in ('upper_arm', 'forearm')]
-    shoulder = upper.head_local
+    shoulder = attached(upper.name)
     direction = (wrist - shoulder).normalized()
     full = upper.length + fore.length
     assert (wrist - shoulder).length < full - .005, (side, 'cannot reach', wrist)
@@ -491,17 +468,28 @@ def action_fcurves(obj):
     return action_get_channelbag_for_slot(action, obj.animation_data.action_slot).fcurves
 
 
-def bake(action_name, frames, pose_at, animated):
-    """Key `animated` bones on every frame; `pose_at(t)` receives the loop phase t in [0, 1]."""
+def bake(action_name, frames, pose_at, animated, sway=True, activity=None):
+    """Key `animated` bones on every frame; `pose_at(t)` receives the loop phase t in [0, 1].
+
+    With `sway`, each frame first gets the shared secondary motion (body sway, coat, sleeves, hat
+    tip, feet) at the same phase, scaled up a little by `activity(t)` (0..1) during big gestures;
+    `pose_at` then solves the arms from the swaying shoulders, so held props stay put in the gloves.
+    """
     scene.frame_start, scene.frame_end = 1, frames
     scene.render.fps = 24
     armature = santa.modifiers.get('Armature')
     armature.show_viewport = False
+    if sway:
+        animated = list(dict.fromkeys(list(animated) + list(santa_motion.ANIMATED_BONES)))
     for f in range(1, frames + 1):
         scene.frame_set(f)
         for bone in rig.pose.bones:
             bone.matrix_basis = Matrix.Identity(4)
-        pose_at((f - 1) / (frames - 1))
+        t = (f - 1) / (frames - 1)
+        if sway:
+            santa_motion.sway(rig, t, activity(t) if activity else 0)
+            bpy.context.view_layer.update()
+        pose_at(t)
         for name in animated:
             bone = rig.pose.bones[name]
             for path in ('location', 'rotation_quaternion', 'scale'):

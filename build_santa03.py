@@ -1,4 +1,4 @@
-"""Build the Bouquet Cafe edition from the packed character made by build_santa01.py.
+"""Build the Bouquet Cafe edition from the base character made by build_santa_base.py.
 
 blender -b --factory-startup --python-exit-code 1 -P build_santa03.py -- previews
 The optional directory receives front, aroma, mug and bouquet previews and the page poster.
