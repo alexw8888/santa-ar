@@ -86,6 +86,8 @@ def check(version, action, frames, holds, props, translucent=False):
                    for p in stage.Traverse() if p.IsA(UsdShade.Shader) for s in [UsdShade.Shader(p)])
     page = (docs / (version + '.html')).read_text(encoding='utf-8')
     assert action in page
-    for asset in (version + '.glb', version + '.usdz', version + '-poster.webp'):
+    for asset in (version + '.glb', version + '-android.glb', version + '.usdz', version + '-poster.webp'):
         assert asset in page and (docs / asset).stat().st_size > 0
+    # Scene Viewer closes on any extension outside its list; the Android copy must use none.
+    assert b'extensions' not in (docs / (version + '-android.glb')).read_bytes()[:200000],         'Android GLB still uses glTF extensions'
     print(f'PASS: {name} grips, loop closure, rigid props, skinning, textures, exports and page assets')

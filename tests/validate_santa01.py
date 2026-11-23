@@ -111,6 +111,8 @@ gltf=json.loads(raw[20:20+n])
 assert [a['name'] for a in gltf['animations']]==['Santa01_Natural_Shoulders_Drink_Cup_Tilt']
 assert 'animation-name="Santa01_Natural_Shoulders_Drink_Cup_Tilt"' in (ROOT/'docs/santa01b.html').read_text(encoding='utf-8'), 'Viewer requests a different animation'
 assert gltf['skins'] and gltf['images']
+assert 'santa01-android.glb' in (ROOT/'docs/santa01b.html').read_text(encoding='utf-8'), 'Page has no Android GLB'
+assert b'extensions' not in (ROOT/'docs/santa01-android.glb').read_bytes()[:200000], 'Android GLB still uses glTF extensions'
 cloth_gltf=next(m for m in gltf['materials'] if m['name']=='Crimson_velvet')
 assert 'baseColorTexture' in cloth_gltf['pbrMetallicRoughness']
 assert 'metallicRoughnessTexture' in cloth_gltf['pbrMetallicRoughness']
