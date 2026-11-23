@@ -120,9 +120,9 @@
 
   <model-viewer
     id="santa06"
-    data-src="santa06.glb?v=yunqueen-3"
-    ios-src="santa06.usdz?v=yunqueen-3"
-    alt="Santa lifts a steaming Yunqueen rice noodle bowl while a yellow duck sways beside him."
+    data-src="santa06.glb?v=yunqueen-4"
+    ios-src="santa06.usdz?v=yunqueen-4"
+    alt="Santa holds a steaming Yunqueen rice noodle bowl in one hand and lifts noodles with chopsticks while a yellow duck sways beside him."
     ar
     ar-modes="scene-viewer quick-look webxr"
     ar-scale="auto"
@@ -130,13 +130,13 @@
     camera-controls
     touch-action="pan-y"
     camera-orbit="-3deg 81deg auto"
-    poster="santa06-poster.webp?v=yunqueen-3"
+    poster="santa06-poster.webp?v=yunqueen-4"
     shadow-intensity="1"
     shadow-softness="0.8"
     exposure="1.05"
     environment-image="neutral"
     autoplay
-    animation-name="Santa06_Noodle_Aroma">
+    animation-name="Santa06_Noodle_Chopsticks">
 
     <button slot="ar-button" class="ar-button">🎅 View in your space</button>
     <div class="ar-prompt">Move your phone slowly to find the floor</div>
@@ -155,7 +155,7 @@
     const btn = document.getElementById('toggleAnim');
     const hint = document.getElementById('launchHint');
     const tapHint = 'If AR doesn’t open automatically, tap “View in your space”.';
-    const animation = 'Santa06_Noodle_Aroma';
+    const animation = 'Santa06_Noodle_Chopsticks';
 
     // iPhone/iPad open the USDZ in AR Quick Look, which never uses the GLB. Same test as model-viewer.
     const quickLook = (() => {
