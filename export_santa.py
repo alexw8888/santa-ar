@@ -12,10 +12,10 @@ import bpy, os, re, struct, sys
 import numpy as np
 HERE = os.path.dirname(os.path.abspath(__file__))
 # material -> fraction of triangles kept. The beard and fur are on every edition; the rest are
-# Santa 03's bouquet, which alone roughly doubles that edition's geometry.
+# Santa 03's flowers, which alone nearly double that edition's geometry.
 DECIMATE = {'Silver_beard': .5, 'Ivory_plush_fur': .5,
-            'Lavender florets': .5, 'Crimson rose petals': .5, 'Blush rose petals': .5,
-            'Delphinium blue': .5, 'Rose heart': .5, 'Blush rose heart': .5}
+            'Crimson rose petals': .5, 'Blush rose petals': .5, 'Rose heart': .5, 'Blush rose heart': .5,
+            'Rose sepals': .4, 'Silver dollar eucalyptus': .6, 'Blue eucalyptus': .6}
 TEXTURE_SCALE = .5
 MIN_TEXTURE = 128
 JPEG_QUALITY = 70

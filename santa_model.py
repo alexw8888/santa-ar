@@ -246,6 +246,7 @@ CUP = Vector((.15, -.48, 1.12))
 KETTLE = Vector((-.44, -.40, 1.53))
 SHOULDERS = {'L': Vector((.265, 0, 1.43)), 'R': Vector((-.265, 0, 1.43))}
 UPPER, LOWER = .31, .30
+SHOULDER_BALL = .13  # radius of the round shoulder at each arm joint (the sleeve top fits inside)
 
 def elbow_for(side, wrist):
     shoulder = SHOULDERS[side]
@@ -671,6 +672,10 @@ def character():
         cuff = wrist - direction * .035
         tube([shoulder + (elbow - shoulder) * -.12, shoulder.lerp(elbow, .28), elbow,
               elbow.lerp(cuff, .55), cuff], [.118, .138, .118, .102, .090], RED, [upper, fore], sides=24, sub=3, cloth_folds=.0035)
+        # A round velvet shoulder centred on the joint: turning about its own centre it keeps the same
+        # shape at any arm angle, and the top of the sleeve always stays tucked inside it, so the
+        # shoulder is never pointed and the sleeve never pokes out of the coat.
+        ellipsoid(shoulder, (SHOULDER_BALL,) * 3, RED, upper, seg=32, rings=20)
         fur_ring(cuff, direction, .090, .052, fore)
         for offset in (-.025, .015):
             center = elbow + direction * offset
