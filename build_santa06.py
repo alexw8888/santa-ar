@@ -16,7 +16,7 @@ import bpy  # noqa: E402
 from mathutils import Matrix  # noqa: E402
 
 import santa_kit as kit  # noqa: E402
-from santa_kit import (TAU, aim_eyes, around, bound, cord, ellipsoid, hold, label, look,  # noqa: E402
+from santa_kit import (TAU, aim_eyes, around, bound, cord, decal, ellipsoid, hold, look,  # noqa: E402
                        material, place, profile, ramp, recolor, rigid, rings, sheet, steam, turn)
 
 FOOT = Vector((.12, -.52, 1.12))       # centre of the bowl's foot ring
@@ -65,15 +65,22 @@ mesh.to_mesh(santa.data)
 mesh.free()
 
 porcelain = material('White porcelain bowl', 'F6F4EF', .14, coat=.7)
+emblem = porcelain.copy()
+emblem.name = 'Yunqueen emblem'
+emblem_nodes = emblem.node_tree
+emblem_texture = emblem_nodes.nodes.new('ShaderNodeTexImage')
+emblem_texture.image = bpy.data.images.load(str(kit.ROOT / 'assets/yunqueen-emblem.png'))
+emblem_texture.image.name = 'yunqueen-emblem'
+emblem_texture.image.pack()
+emblem_shader = emblem_nodes.nodes['Principled BSDF']
+emblem_nodes.links.new(emblem_texture.outputs['Color'], emblem_shader.inputs['Base Color'])
+emblem_nodes.links.new(emblem_texture.outputs['Alpha'], emblem_shader.inputs['Alpha'])
 broth = material('Rich noodle broth', 'B8561E', .12, coat=.6)
 oil = material('Chilli oil', 'E0451A', .1, coat=.8)
 noodle = material('Rice noodles', 'F2E6C4', .35, sheen=.2)
 mince = material('Braised pork mince', '6A3417', .55)
 cilantro = material('Cilantro', '3E8E2A', .45)
 scallion = material('Scallion', '7DB548', .45)
-gold_ink = material('Yunqueen gold', 'F3A818', .35)
-dark_ink = material('Yunqueen brown outline', '45200B', .5)
-white_ink = material('Rice Noodles white', 'FFFFFF', .4)
 vapour = material('Noodle_steam', 'F1EEE8', .9, alpha=.12)
 plush = recolor('Ivory_plush_fur', 'Duck yellow plush', 'FAD51C', .16)
 bill = material('Duck bill', 'E3361B', .55)
@@ -98,9 +105,8 @@ with bound('bowl'), place(*FOOT):
     profile([(z, r, r) for z, r in WALL] + [(.242, .232, .232), (.246, .226, .226), (.238, .218, .218),
                                             (.180, .204, .204), (.100, .158, .158), (.040, .100, .100),
                                             (.028, .080, .080)], porcelain, n=64)
-    label('Yunqueen', gold_ink, around(wall, .168, lift=.002), .27, bold=.04, outline=(dark_ink, .06), step=.0015)
-    label('Rice Noodles', white_ink, around(wall, .120, lift=.002), .20, bold=.03, outline=(dark_ink, .07),
-          step=.0015)
+    width, height = emblem_texture.image.size
+    decal(around(wall, .139, lift=.001), .170 * width / height, .170, emblem, rows=40)
     profile([(BROTH - .004, .207, .207), (BROTH, .209, .209)], broth, n=48)
     for _ in range(14):
         a, r = rnd.uniform(0, TAU), rnd.uniform(.03, .18)
@@ -362,6 +368,6 @@ kit.finish('santa06', FRONT, [
     ('chopsticks', LIFT_FRAME, CLOSE),
     ('grip', LIFT_FRAME, ((-.75, -1.05, 1.62), (-.10, -.47, 1.45), 75, (640, 640))),
     ('pinch', round(.24 * (FRAMES - 1)) + 1, ((-.30, -1.20, 1.70), (-.05, -.50, 1.38), 70, (640, 640))),
-    ('bowl', 1, CLOSE),
+    ('bowl', 1, ((.02, -1.76, 1.56), (.12, -.58, 1.27), 56, (640, 640))),
     ('duck', 1, ((.95, -2.4, .80), (.70, -.24, .55), 58, (640, 640))),
 ])
