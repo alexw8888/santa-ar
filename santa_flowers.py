@@ -1,7 +1,9 @@
-"""Flower heads, stems and arrangements shared by the Bouquet Cafe edition (Santa 03).
+"""Flowers for the Bouquet Café edition (Santa 03), modelled on the café's wrapped bouquet
+(photos/03 Bouquet Cafe bouquet *.jpg): deep red roses, ruffled peach-pink spray roses with buds,
+silver-dollar eucalyptus and airy limonium sprays.
 
-All heads are modelled around their own origin, opening toward +Z, inside the current
-santa_kit frame, so an arrangement only has to aim each head along its direction.
+Heads are modelled around their own origin, opening toward +Z, inside the current santa_kit frame,
+so an arrangement only has to aim each head along its direction.
 """
 import math
 import random
@@ -10,72 +12,97 @@ from mathutils import Matrix, Vector
 
 from santa_kit import TAU, ball, cord, ellipsoid, frame, leaf, material, sheet
 
-
-def petal_ring(count, r, dist, height, spread, opening, mat, phase=0, rows=4, cols=5):
-    """Cupped petals wrapped around the axis; `spread` is each petal's half-angle at its widest."""
-    for i in range(count):
-        a0 = TAU * i / count + phase
-        grid = []
-        for j in range(rows + 1):
-            t = j / rows
-            half = spread * (.45 + .55 * math.sin(math.pi * (.15 + .6 * t)))
-            rad = r * (dist + opening * t * t)
-            z = r * height * math.sin(math.pi / 2 * t)
-            grid.append([(rad * math.cos(a0 + u * half) * (1 + .10 * u * u * t),
-                          rad * math.sin(a0 + u * half) * (1 + .10 * u * u * t), z - r * .08 * u * u * t)
-                         for u in [2 * k / (cols - 1) - 1 for k in range(cols)]])
-        sheet(grid, mat)
+GOLDEN = 2.39996  # radians between successive petals, as in a real rose
 
 
-def rose(r, mat, deep):
-    ellipsoid(0, 0, r * .40, r * .22, r * .22, r * .42, deep, 8, 4)
-    for count, dist, height, spread, opening, phase, tone in (
-            (3, .12, .95, 1.5, .05, .3, deep), (4, .26, .92, 1.05, .12, 1.1, deep), (5, .42, .84, .85, .26, .2, mat),
-            (6, .60, .70, .72, .48, .9, mat), (7, .76, .50, .60, .72, .4, mat)):
-        petal_ring(count, r, dist, height, spread, opening, tone, phase)
+def palette():
+    m = {}
+    m['red'] = material('Crimson rose petals', '8A0A1C', .48, sheen=.25)
+    m['red_deep'] = material('Rose heart', '520410', .5, sheen=.25)
+    m['pink'] = material('Blush rose petals', 'F4B3A6', .55, sheen=.2)
+    m['pink_deep'] = material('Blush rose heart', 'E48C82', .55, sheen=.2)
+    m['sepal'] = material('Rose sepals', '3E6B2A', .55)
+    m['stem'] = material('Flower stems', '4E7A30', .55)
+    m['eucalyptus'] = material('Silver dollar eucalyptus', '7A8C78', .6, sheen=.35)
+    m['eucalyptus2'] = material('Blue eucalyptus', '6C8277', .6, sheen=.35)
+    m['eucalyptus_stem'] = material('Eucalyptus stems', '8C6B50', .6)
+    m['limonium'] = material('Limonium sprays', 'F1ECDF', .75)
+    m['limonium_stem'] = material('Limonium stems', 'A2A77E', .7)
+    for mat in m.values():
+        tinted(mat)
+    return m
 
 
-def tulip(r, mat, green):
-    ellipsoid(0, 0, -.004, r * .30, r * .30, r * .25, green, 8, 4)
-    for ring, phase, scale in ((0, 0, 1), (1, math.pi / 3, .93)):
-        for i in range(3):
-            a0 = TAU * i / 3 + phase
-            grid = []
-            for j in range(6):
-                t = j / 5
-                rad = r * scale * (.30 + .70 * math.sin(math.pi * min(1, .12 + .80 * t)))
-                half = math.radians(64) * (1 - .55 * t ** 3)
-                grid.append([(rad * math.cos(a0 + u * half), rad * math.sin(a0 + u * half), r * 2.3 * t * scale)
-                             for u in (-1, -.5, 0, .5, 1)])
-            sheet(grid, mat)
+def tinted(mat):
+    """Tint a material's sheen with its own colour, so deep reds and greens don't go dusty pale."""
+    mat.node_tree.nodes['Principled BSDF'].inputs['Sheen Tint'].default_value = (*mat.diffuse_color[:3], 1)
+    return mat
 
 
-def daisy(r, mat, centre, count=14):
-    ellipsoid(0, 0, r * .05, r * .28, r * .28, r * .13, centre, 12, 4)
-    for i in range(count):
-        a = TAU * i / count
-        c, s = math.cos(a), math.sin(a)
-        grid = []
-        for j in range(4):
-            t = j / 3
-            w = r * .13 * math.sin(math.pi * (.2 + .7 * t)) ** .5
-            d = r * (.22 + .78 * t)
-            z = r * (.04 - .18 * t * t)
-            grid.append([(d * c - u * w * s, d * s + u * w * c, z) for u in (-1, 0, 1)])
-        sheet(grid, mat)
+def petal(a0, base, length, half, opening, reflex, mat, curl=0., ruffle=0., phase=0., rows=5, cols=5):
+    """One petal growing from radius `base` at angle `a0`, wrapped around the flower's axis.
+
+    half: half-width as an angle around the axis; opening: lean out from upright (radians);
+    reflex: how far the tip rolls back outward; curl: the edges flare out near the tip;
+    ruffle: a wavy rim, as on spray roses."""
+    grid = []
+    for j in range(rows + 1):
+        t = j / rows
+        row = []
+        for i in range(cols):
+            u = 2 * i / (cols - 1) - 1
+            s = t * (1 - .22 * u * u * t ** 3)  # the corners stop short: a rounded petal tip
+            w = half * (.38 + .62 * math.sin(math.pi * (.08 + .72 * s)))
+            rad = (base + length * (math.sin(opening) * s + reflex * s ** 3) + curl * length * u * u * s * s
+                   + ruffle * length * math.sin(3 * math.pi * u + phase) * s ** 3)
+            z = length * (math.cos(opening) * s - reflex * .5 * s ** 4)
+            a = a0 + u * w
+            row.append((rad * math.cos(a), rad * math.sin(a), z))
+        grid.append(row)
+    sheet(grid, mat)
 
 
-def spike(length, mat, stem, size, seed):
-    """Lavender or delphinium: florets clustered along the top of a stem (+Z)."""
+def sepals(r, mat, count=5, seed=0):
     rnd = random.Random(seed)
-    cord([(0, 0, -.03), (0, 0, length * .5), (0, 0, length)], .0022, stem, [1, .9, .6], sides=5)
-    n = int(length / size * 1.6)
-    for k in range(n):
-        t = k / n
-        z = length * (.38 + .62 * t)
-        a = k * 2.4
-        rr = size * (1.1 - .7 * t)
-        ball(rr * math.cos(a), rr * math.sin(a), z, size * (1 - .45 * t) * rnd.uniform(.8, 1.1), mat, 6, 3)
+    ellipsoid(0, 0, -r * .10, r * .22, r * .22, r * .20, mat, 8, 4)
+    for k in range(count):
+        a = TAU * k / count + rnd.uniform(-.2, .2)
+        d = Vector((math.cos(a), math.sin(a), -.55)).normalized()
+        rot = Vector((0, 0, 1)).rotation_difference(d).to_matrix().to_4x4()
+        with frame(Matrix.Translation((0, 0, -r * .1)) @ rot @ Matrix.Rotation(-a + math.pi / 2, 4, 'Z')):
+            leaf(r * rnd.uniform(.55, .75), r * .09, mat, fold=.4, curl=.25, segments=4)
+
+
+def rose(r, mat, deep, sepal, seed=0, petals=20, bloom=1., ruffle=0.):
+    """A rose `r` across its open outer petals: a tight spiral of upright inner petals that open
+    and roll back toward the outside, on green sepals."""
+    rnd = random.Random(seed)
+    ellipsoid(0, 0, r * .22, r * .16, r * .16, r * .26, deep, 8, 4)
+    for k in range(petals):
+        f = k / (petals - 1)
+        petal(k * GOLDEN + rnd.uniform(-.12, .12), r * (.03 + .24 * f), r * (.46 + .44 * f) * rnd.uniform(.94, 1.05),
+              1.30 - .62 * f, bloom * (.10 + 1.05 * f ** 1.5), bloom * .55 * max(0, f - .45),
+              deep if f < .3 else mat, curl=.30 * f * f, ruffle=ruffle, phase=rnd.uniform(0, TAU),
+              rows=5 if f > .3 else 4)
+    sepals(r, sepal, seed=seed)
+
+
+def bud(r, mat, deep, sepal, seed=0):
+    """A closed spray-rose bud: a tight teardrop of petals hugged by sepals."""
+    rnd = random.Random(seed)
+    ellipsoid(0, 0, r * .55, r * .36, r * .36, r * .62, deep, 8, 5)
+    for k in range(4):
+        petal(k * GOLDEN + rnd.uniform(0, 1), r * .20, r * 1.05, 1.1, .12, .05, mat, rows=4, cols=4)
+    sepals(r * 1.2, sepal, seed=seed)
+
+
+def head(kind, size, m, seed):
+    if kind == 'red':
+        rose(size, m['red'], m['red_deep'], m['sepal'], seed, petals=22, bloom=.85)
+    elif kind == 'pink':
+        rose(size, m['pink'], m['pink_deep'], m['sepal'], seed, petals=15, bloom=1.25, ruffle=.07)
+    elif kind == 'bud':
+        bud(size, m['pink'], m['pink_deep'], m['sepal'], seed)
 
 
 def aim(origin, direction, spin=0):
@@ -84,83 +111,80 @@ def aim(origin, direction, spin=0):
     return Matrix.Translation(origin) @ rot @ Matrix.Rotation(spin, 4, 'Z')
 
 
-def palette():
-    m = {}
-    m['red'] = material('Crimson rose petals', 'B3112C', .55, sheen=.12)
-    m['red_deep'] = material('Rose heart', '7A0619', .55, sheen=.12)
-    m['pink'] = material('Blush rose petals', 'F08AA5', .55, sheen=.12)
-    m['pink_deep'] = material('Blush rose heart', 'D2587A', .55, sheen=.12)
-    m['yellow'] = material('Yellow tulip', 'F7C02B', .45, sheen=.3)
-    m['orange'] = material('Apricot tulip', 'F28A3A', .45, sheen=.3)
-    m['tulip_pink'] = material('Pink tulip', 'F06C8A', .45, sheen=.3)
-    m['aster'] = material('Lilac aster', '9B7BD8', .5, sheen=.3)
-    m['sun'] = material('Golden daisy', 'F8C531', .5, sheen=.3)
-    m['eye'] = material('Daisy eye', 'C77A16', .7)
-    m['lavender'] = material('Lavender florets', '7A5BC4', .6)
-    m['delphinium'] = material('Delphinium blue', '4E6FD8', .55)
-    m['gyp'] = material('Babys breath', 'F4F1F6', .7)
-    m['stem'] = material('Flower stems', '4E8A2F', .55)
-    m['leaf'] = material('Bouquet leaves', '3F7B2B', .5)
-    m['leaf2'] = material('Fresh leaves', '6A9E3A', .5)
-    return m
-
-
-def head(kind, size, m, seed):
+def eucalyptus(m, base, direction, length, leaves, size, seed):
+    """A silver-dollar eucalyptus sprig: a woody stem with round, cupped leaves in opposite pairs,
+    each lying flat beside the stem so its face shows from outside the bouquet."""
     rnd = random.Random(seed)
-    if kind == 'red':
-        rose(size, m['red'], m['red_deep'])
-    elif kind == 'pink':
-        rose(size, m['pink'], m['pink_deep'])
-    elif kind in ('yellow', 'orange', 'tulip_pink'):
-        tulip(size * .55, m[kind], m['stem'])
-    elif kind in ('aster', 'sun'):
-        daisy(size * .85, m[kind], m['eye'], 13 + rnd.randrange(4))
-    elif kind == 'gyp':
-        for k in range(7):
-            a = k * 2.4
-            ball(.018 * math.cos(a) * (k % 3) / 2, .018 * math.sin(a) * (k % 3) / 2, .005 * (k % 2), .0055,
-                 m['gyp'], 6, 3)
+    d = Vector(direction).normalized()
+    side = d.cross(Vector((0, 0, 1)) if abs(d.z) < .95 else Vector((1, 0, 0))).normalized()
+    sag = Vector((0, 0, -.18 * length))
+    path = [Vector(base) + d * length * k / 6 + sag * (k / 6) ** 2 for k in range(7)]
+    cord(path, .0022, m['eucalyptus_stem'], [1, 1, .9, .8, .7, .6, .5], sides=5)
+    mat = m['eucalyptus' if seed % 3 else 'eucalyptus2']
+    for k in range(leaves):
+        t = .2 + .8 * k / max(1, leaves - 1)
+        i = min(5, int(t * 6))
+        p = path[i].lerp(path[i + 1], t * 6 - i)
+        axis = (path[i + 1] - path[i]).normalized()
+        for s in (-1, 1):
+            r = size * rnd.uniform(.85, 1.1) * (1.15 - .45 * t)
+            twist = Matrix.Rotation(rnd.uniform(-.45, .45), 3, axis)
+            u = twist @ (side * s)
+            v = (axis + u * .15).normalized()
+            normal = u.cross(v).normalized() * s
+            centre = p + u * r * 1.02
+            rows = []
+            for j in range(7):
+                b = 2 * j / 6 - 1
+                rows.append([tuple(centre + u * (r * a * math.sqrt(max(0, 1 - b * b))) + v * (r * b)
+                                   + normal * (r * .22 * (a * a + b * b)) - u * (r * .12 * (1 - b * b)))
+                             for a in (-1, -.5, 0, .5, 1)])
+            sheet(rows, mat)
 
 
-def arrangement(centre, radius, cone, kinds, m, seed, stems_to=None, spikes=0, leaves=0, spike_length=.16, leaf_size=1):
-    """Heads spread over a dome (Fibonacci spiral within `cone` degrees of +Z).
+def limonium(m, base, direction, length, seed, twigs=8, florets=11):
+    """A limonium (caspia) spray: fine branching twigs ending in clusters of tiny cream florets."""
+    rnd = random.Random(seed)
+    d = Vector(direction).normalized()
+    tip = Vector(base) + d * length
+    cord([Vector(base), Vector(base).lerp(tip, .5), tip], .0013, m['limonium_stem'], sides=4)
+    ends = [tip]
+    for k in range(twigs):
+        start = Vector(base).lerp(tip, .5 + .45 * k / max(1, twigs - 1))
+        twig = (d + Vector((rnd.uniform(-1, 1), rnd.uniform(-1, 1), rnd.uniform(-.2, .5)))).normalized()
+        end = start + twig * length * rnd.uniform(.16, .28)
+        cord([start, end], .0009, m['limonium_stem'], sides=3)
+        ends.append(end)
+    for end in ends:
+        for j in range(florets):
+            q = end + Vector((rnd.uniform(-1, 1), rnd.uniform(-1, 1), rnd.uniform(-.6, 1))) * .014
+            ball(q.x, q.y, q.z, .0030 * rnd.uniform(.7, 1.25), m['limonium'], 3, 2)
 
-    stems_to=(tie, bottom, spread) draws each stem down through the tie point to the bottom.
-    """
+
+def arrangement(centre, radius, cone, kinds, m, seed, height=1., stems_to=None):
+    """Heads spread over a dome (a Fibonacci spiral within `cone` degrees of +Z, squashed by
+    `height`), each facing out from the dome, part way toward straight up.
+
+    stems_to=(tie, bottom, spread) draws each stem down through the tie point to the bottom."""
     rnd = random.Random(seed)
     n = len(kinds)
     tips = []
     for i, (kind, size) in enumerate(kinds):
         h = 1 - (1 - math.cos(math.radians(cone))) * (i + .5) / n
-        a = i * 2.39996 + rnd.uniform(-.2, .2)
+        a = i * GOLDEN + rnd.uniform(-.15, .15)
         s = math.sqrt(max(0, 1 - h * h))
         d = Vector((s * math.cos(a), s * math.sin(a), h))
-        p = Vector(centre) + d * radius * rnd.uniform(.92, 1.04)
-        with frame(aim(p, d.lerp(Vector((0, 0, 1)), .25), rnd.uniform(0, TAU))):
+        p = Vector(centre) + Vector((d.x, d.y, d.z * height)) * radius * rnd.uniform(.94, 1.03)
+        with frame(aim(p, d.lerp(Vector((0, 0, 1)), .3), rnd.uniform(0, TAU))):
             head(kind, size, m, seed + i)
         tips.append(p)
-    for k in range(spikes):
-        a = TAU * k / spikes + rnd.uniform(-.3, .3)
-        d = Vector((.42 * math.cos(a), .42 * math.sin(a), 1)).normalized()
-        p = Vector(centre) + d * radius * .7
-        with frame(aim(p, d, 0)):
-            spike(spike_length * rnd.uniform(.85, 1.15), m['lavender' if k % 3 else 'delphinium'], m['stem'],
-                  .0075 if k % 3 else .010, seed * 7 + k)
-        tips.append(p)
-    for k in range(leaves):
-        a = TAU * k / leaves + rnd.uniform(-.2, .2)
-        d = Vector((math.cos(a), math.sin(a), rnd.uniform(-.1, .35))).normalized()
-        p = Vector(centre) + Vector((math.cos(a), math.sin(a), 0)) * radius * .55 + Vector((0, 0, -radius * .25))
-        rot = Vector((0, 0, 1)).rotation_difference(d).to_matrix().to_4x4()
-        # Turn each leaf so its curl faces down/outward.
-        with frame(Matrix.Translation(p) @ rot @ Matrix.Rotation(-a + math.pi / 2, 4, 'Z')):
-            leaf(leaf_size * rnd.uniform(.085, .12), leaf_size * rnd.uniform(.020, .028), m['leaf' if k % 2 else 'leaf2'])
     if stems_to:
         tie, bottom, spread = stems_to
         for i, p in enumerate(tips):
-            a = i * 2.39996
+            a = i * GOLDEN
             r = spread * math.sqrt((i + .5) / len(tips))
             off = Vector((r * math.cos(a), r * math.sin(a), 0))
             cord([p - (p - Vector(tie)).normalized() * .01, Vector(tie) + off * .8 + (p - Vector(tie)) * .45,
                   Vector(tie) + off * .8, Vector((0, 0, (tie[2] + bottom[2]) / 2)) + off * .9, Vector(bottom) + off * .75],
                  .0032, m['stem'], sides=5)
+    return tips

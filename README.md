@@ -6,25 +6,25 @@ Each version has its own public HTML page and model assets. GitHub Pages publish
 | --- | --- | --- |
 | Santa 01 | [santa01b.html](https://alexw8888.github.io/santa-ar/santa01b.html) | Pour chai from a brass kettle while watching the glass, then raise the glass to his lips and sip it empty |
 | Santa 02 | [santa02.html](https://alexw8888.github.io/santa-ar/santa02.html) | Lift an armful of Aisle24 groceries, glance down and settle them back into both hands |
-| Santa 03 | [santa03.html](https://alexw8888.github.io/santa-ar/santa03.html) | Raise a steaming Bouquet Cafe mug to enjoy the aroma while a bouquet sways in the other hand |
+| Santa 03 | [santa03.html](https://alexw8888.github.io/santa-ar/santa03.html) | Hold a steaming Bouquet Café mug, raise a wrapped bouquet from his side and reach forward to offer it to the viewer at chest height, with the flowers tipped toward them, pausing so they can pose as if taking it |
 | Santa 04 | [santa04.html](https://alexw8888.github.io/santa-ar/santa04.html) | Lift and gently rock a little lit tree crowned with the glowing Landmark on Robson sign |
 | Santa 05 | [santa05.html](https://alexw8888.github.io/santa-ar/santa05.html) | Lift a strawberry cream bun from chest height to his lips, bite a piece off the top, then lower it and chew beside the Mello sack |
 | Santa 06 | [santa06.html](https://alexw8888.github.io/santa-ar/santa06.html) | Hold a steaming Yunqueen rice noodle bowl in one hand and lift a bundle of noodles with chopsticks in the other while the yellow duck sways |
 
 Open a page in Chrome on Android or Safari on iPhone/iPad. On iPhone/iPad the page opens AR Quick Look straight away, which downloads only the USDZ; it holds back the GLB for the in-page 3D view until you return to the page or tap it, so the two downloads never compete. If Safari blocks the automatic launch, **View in your space** opens it. Android opens AR only when you tap **View in your space**, in Chrome's own AR (WebXR) first, which renders the full GLB. Phones without WebXR AR fall back to Scene Viewer and load `santaNN-android.glb` instead, since Scene Viewer downloads the page's model; on some phones Scene Viewer closes as soon as it opens, even with Google's own sample model, while WebXR works. AR opens only from a tap because Chrome treats an automatic jump to Scene Viewer as a redirect and closes the tab, so the page would be gone when AR ends. `docs/test/scene-viewer.html` launches Scene Viewer and WebXR variants one tap at a time to see which work on a phone. Desktop browsers show the interactive 3D model.
 
-`export_santa.py` slims every edition's GLB and USDZ for phone downloads without touching the `.blend`. It halves the triangles of the beard and fur trim (and Santa 03's bouquet), halves every texture (never below 128 px) and writes them as JPEG at quality 70 in both files. Blender's USD exporter only writes PNG, so the exporter re-encodes the USDZ textures and repackages it; images with real transparency would stay PNG. Tune `DECIMATE`, `TEXTURE_SCALE` and `JPEG_QUALITY` at the top of the exporter.
+`export_santa.py` slims every edition's GLB and USDZ for phone downloads without touching the `.blend`. It halves the triangles of the beard and fur trim (and Santa 03's flowers), halves every texture (never below 128 px) and writes them as JPEG at quality 70 in both files. Blender's USD exporter only writes PNG, so the exporter re-encodes the USDZ textures and repackages it; images with real transparency would stay PNG. Tune `DECIMATE`, `TEXTURE_SCALE` and `JPEG_QUALITY` at the top of the exporter.
 
 The exporter also writes `santaNN-android.glb` with `scene_viewer_glb.py`: the same GLB without the material extensions Scene Viewer rejects (sheen, specular, clearcoat, emissive strength). Scene Viewer treats any extension outside its short list as an error and closes as soon as it opens the model. Geometry, skin, animation and textures are unchanged; desktop browsers and phones with WebXR AR keep the full GLB. To refresh the Android copies without Blender, run `python scene_viewer_glb.py santa01 santa02 ...`.
 
 | Edition | Triangles (scene → export) | GLB | USDZ |
 | --- | --- | --- | --- |
-| Santa 01 | 135k → 101k | 4.4 MB | 3.6 MB |
-| Santa 02 | 149k → 115k | 4.7 MB | 5.9 MB |
-| Santa 03 | 232k → 161k | 7.2 MB | 8.8 MB |
-| Santa 04 | 153k → 119k | 5.6 MB | 6.2 MB |
-| Santa 05 | 137k → 102k | 4.4 MB | 5.5 MB |
-| Santa 06 | 155k → 121k | 5.1 MB | 6.2 MB |
+| Santa 01 | 138k → 103k | 4.5 MB | 3.6 MB |
+| Santa 02 | 152k → 118k | 4.8 MB | 6.0 MB |
+| Santa 03 | 271k → 186k | 8.4 MB | 10.3 MB |
+| Santa 04 | 156k → 121k | 5.7 MB | 6.3 MB |
+| Santa 05 | 140k → 105k | 4.5 MB | 5.6 MB |
+| Santa 06 | 158k → 123k | 5.2 MB | 6.3 MB |
 
 ## How the editions are built
 
@@ -57,6 +57,7 @@ Modelled on the Santa 01 reference photo (`photos/01 Chaiiwala Santa.jpg`):
 - The beard is wide and full, made of wavy, flattened locks; the moustache sweeps up into the cheeks; sideburns join the hat to the beard.
 - The red garments use a generated photographic velvet swatch (`assets/textures/santa01-velvet-source.png`) with fiber normals, varying roughness and soft sheen, at a consistent physical UV scale. Core color/normal/roughness maps also support AR viewers that do not render the optional sheen extension.
 - The fur trim is plush, with soft clumps and fibers; the pompom is round and fluffy.
+- Each shoulder is a round velvet ball centred on the arm joint (`SHOULDER_BALL` in `santa_model.py`). Turning about its own centre it keeps the same round shape at any arm angle, and the top of the sleeve always stays tucked inside it, so the shoulder is never pointed and the sleeve never pokes out of the coat.
 - Brown leather gloves; worn mid-brown work boots with thick soles, heels, toe-cap seams and brass ankle buckles; a wide leather belt with a large brass buckle.
 - Generated textures are converted from linear to sRGB when written; the scene keeps them at full resolution (velvet 1024 px), and the exporter halves them into JPEG for the GLB and USDZ.
 - AR Quick Look fixes: the mouth cavity faces the viewer because Quick Look culls back faces even on double-sided meshes, and the exporter patches translucent materials' opacity into the USDZ (Blender writes every UsdPreviewSurface as opaque).
@@ -82,14 +83,14 @@ Modelled on `photos/02 Aisle24 Santa.jpg`. Santa cradles a scored baguette, spin
 
 Each is modelled on its photo in `photos/` by its own `build_santaNN.py`, using `santa_kit.py` to:
 
-- model props from lathes, tubes, ellipsoids, two-sided petals/leaves and typeset lettering (flat, or wrapped around a mug or bowl), each bound rigidly to one bone and joined into the character mesh;
+- model props from lathes, tubes, ellipsoids, two-sided petals/leaves and typeset lettering (flat, or wrapped around a mug or bowl) and printed images (`decal`, as for Santa 03's logo), each bound rigidly to one bone and joined into the character mesh;
 - recolour Santa's velvet and plush textures for new fabrics, keeping their pile;
 - pose the arms by solving each elbow from the shoulder to a wrist placed so the cupped glove wraps the prop, turn the head part way toward a target and aim the eye bones the rest of the way;
 - bake every frame, with the shared sway, into ordinary bone keys and save the scene, previews and poster.
 
 | Edition | Photo | Props and loop |
 | --- | --- | --- |
-| Santa 03 | `03 Bouquet Cafe Santa.jpg` | A big white Bouquet Cafe mug (wrapped lettering and lotus mark) with curling steam, a dense hand bouquet of roses, tulips, asters, daisies and lavender, and a crimson velvet sack brimming with flowers. Six seconds: he lifts the mug, breathes in the steam, lowers it; the bouquet sways throughout. |
+| Santa 03 | `03 Bouquet Cafe suggested changes.jpg` (the café's mock-up) and `03 Bouquet Cafe bouquet *.jpg` | A big white mug (wider than his glove) in his right glove, printed with the café's logo file (`assets/bouquet-cafe-logo.jpg`, its background recoloured to the glaze), with curling steam. In his left, the café's wrapped bouquet: deep red roses with spiralling, cupped petals, ruffled peach-pink spray roses and buds, silver-dollar eucalyptus and limonium sprays, in a bright red paper cone whose two sheets sweep down to a deep V at the front (more roses and eucalyptus fill the opening), with tall burgundy sheets fanned behind, tied with a sheer white bow and a burgundy satin bow whose tails are printed "bouquet café". The crimson velvet sack of roses and eucalyptus stands behind his right side, so a guest can stand on his left. Eight seconds: a relaxed left glove supports the lower wrapping from behind, with short, gently bent fingers resting on one side of the paper below the flowers, leaving the bouquet's front and bow clear. It starts low beside him, leaning outward as in the reference; he raises it to chest height and extends his arm forward toward the viewer, tipping the flower heads toward the camera with a relaxed wrist (2 s), pauses for about four seconds while looking at the camera, then draws it back and lowers it. The open flower arrangement faces the guest throughout; the mug stays steady. `previews/santa03-grip.png` shows the support from behind. |
 | Santa 04 | `04 Landmark on Robson Santa.jpg` | A little fir tree with needle sprigs, red and green baubles, holly, a spiral of glowing fairy lights and a brass finial carrying the lit Landmark on Robson sign (tower in an arch, outlined lettering). Five seconds: he lifts and rocks the tree while looking up at the sign. |
 | Santa 05 | `05 Mello Santa.jpg` | A sugared brioche with a cream ridge, piped swirls, a strawberry, and a piece of crust over the top that he bites off (its own `chunk` bone shrinks into his mouth, leaving a scalloped bite showing the crumb and cream filling), and a mustard velvet Mello sack (stacked outline lettering, jute rope) holding gifts, a gingerbread figure and a teddy. Eight seconds: he lifts the whole bun from his chest; it rolls bite-side up and rises to wherever his lower lip is as his head leans in, he bites the top, then lowers the bitten bun and chews, and holds it for three more seconds (`REST` in the build script). The piece reappears on the last frame so the loop restarts with a whole bun. |
 | Santa 06 | `06 Yunqueen Santa.jpg` | A porcelain Yunqueen Rice Noodles bowl with broth, wavy rice noodles, pork mince, cilantro, scallions and chilli oil, steam, bamboo chopsticks held the usual way in a right glove of its own (replacing the base's cupped one): the lower stick rests in the web of the thumb and on the ring fingertip and never moves, while the upper stick, held like a pencil between thumb, index and middle fingers, pivots on its own `stick` bone to open and pinch; and the yellow plush duck with its deadpan eyes. Six seconds: his left glove holds the bowl; his right dips the chopsticks into the broth, pinches a bundle of wavy noodles and lifts it above the bowl to admire (not to eat), then lowers it back and lets go while the duck sways. The bundle is six strands on a chain of 16 `noodle.NN` bones: it lies curled in the broth until pinched, then hangs from the tips and trails back into the bowl. |

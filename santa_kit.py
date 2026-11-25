@@ -152,7 +152,7 @@ def recolor(source, name, hex_color, tile):
 
 
 # ----------------------------------------------------------------------------- prop geometry
-verts, faces, slots, smooth, solid, materials, bones = [], [], [], [], [], [], []
+verts, faces, slots, smooth, solid, materials, bones, uvs = [], [], [], [], [], [], [], []
 pose = Matrix.Identity(4)
 binding = 'root'
 
@@ -193,11 +193,13 @@ def bound(bone):
         binding = previous
 
 
-def surface(points, polygons, mat, rounded=False, closed=False, two_sided=False):
+def surface(points, polygons, mat, rounded=False, closed=False, two_sided=False, uv=None):
+    """uv: optional (u, v) per point; otherwise textured materials get box-projected UVs."""
     for back in ((False, True) if two_sided else (False,)):
         offset = len(verts)
         verts.extend(pose @ Vector(p) for p in points)
         bones.extend([binding] * len(points))
+        uvs.extend(uv or [None] * len(points))
         if mat not in materials:
             materials.append(mat)
         slots.extend([materials.index(mat)] * len(polygons))
@@ -330,6 +332,47 @@ def label(text, mat, mapper, width, bold=0.0, outline=None, step=.0012):
         surface([mapper((p.x - cx) * k + dx, (p.y - cy) * k + dy, depth) for p in pts], ps, m)
 
 
+def decal(mapper, width, height, mat, columns=24, rows=6):
+    """A printed image (the material's texture, UV 0..1) `width` x `height`, centred on the mapper's origin."""
+    points, uv = [], []
+    for j in range(rows + 1):
+        for i in range(columns + 1):
+            u, v = i / columns, j / rows
+            points.append(mapper((u - .5) * width, (v - .5) * height))
+            uv.append((u, v))
+    polys = [(j * (columns + 1) + i, j * (columns + 1) + i + 1, (j + 1) * (columns + 1) + i + 1,
+              (j + 1) * (columns + 1) + i) for j in range(rows) for i in range(columns)]
+    surface(points, polys, mat, rounded=True, uv=uv)
+
+
+def printed(base, name, path, ink, crop=None, width=1024):
+    """Copy material `base` with an image printed on it: the image's pale background becomes the
+    material's own colour and its darkest marks become `ink` (hex), so the patch edge never shows."""
+    source = bpy.data.images.load(str(ROOT / path))
+    w, h = source.size
+    px = np.empty(w * h * 4, dtype=np.float32)
+    source.pixels.foreach_get(px)
+    rgb = px.reshape(h, w, 4)[:, :, :3]
+    if crop:  # (left, bottom, right, top) in pixels, image rows counted from the bottom
+        rgb = rgb[crop[1]:crop[3], crop[0]:crop[2]]
+    luma = rgb @ np.array([.2126, .7152, .0722])
+    paper, dark = np.percentile(luma, 90), np.percentile(luma, .5)
+    amount = np.clip((paper - luma) / (paper - dark), 0, 1)[:, :, None]
+    bsdf = base.node_tree.nodes['Principled BSDF']
+    glaze = to_srgb(np.array(bsdf.inputs['Base Color'].default_value[:3]))
+    out = glaze * (1 - amount) + to_srgb(np.array(linear(ink))) * amount
+    height = round(width * out.shape[0] / out.shape[1])
+    ys = np.linspace(0, out.shape[0] - 1, height).round().astype(int)
+    xs = np.linspace(0, out.shape[1] - 1, width).round().astype(int)
+    bpy.data.images.remove(source)
+    mat = base.copy()
+    mat.name = name
+    node = mat.node_tree.nodes.new('ShaderNodeTexImage')
+    node.image = image(name + ' print', out[ys][:, xs])
+    mat.node_tree.links.new(node.outputs['Color'], mat.node_tree.nodes['Principled BSDF'].inputs['Base Color'])
+    return mat
+
+
 def steam(x, y, z, count, height, radius, mat, seed):
     """Soft, curling wisps rising from (x, y, z)."""
     rnd = random.Random(seed)
@@ -367,7 +410,10 @@ def attach(name):
     uv.uv.foreach_set('vector', np.zeros(len(data.loops) * 2, dtype=np.float32))
     for poly in data.polygons:
         tile = TILE.get(materials[poly.material_index])
-        if tile:
+        if uvs[data.loops[poly.loop_start].vertex_index] is not None:
+            for loop in poly.loop_indices:
+                uv.data[loop].uv = uvs[data.loops[loop].vertex_index]
+        elif tile:
             a, b = sorted(sorted(range(3), key=lambda k: abs(poly.normal[k]))[:2])
             for loop in poly.loop_indices:
                 co = data.vertices[data.loops[loop].vertex_index].co
