@@ -289,12 +289,18 @@ with place(*SACK, yaw=25, scale=1.2):
     for a in (.5, 2.6, 4.4):
         cord([((.30 - .1 * k / 4) * math.cos(a), (.28 - .1 * k / 4) * math.sin(a), .12 + .09 * k) for k in range(5)],
              .012, velvet, [.3, .9, 1, .9, .3])
-    sack = [(rnd.choice(['red', 'red', 'pink']), rnd.uniform(.070, .080)) for _ in range(12)]
-    fl.arrangement((0, 0, .60), .17, 78, sack, m, 77, height=.8)
-    for k in range(8):
-        a = TAU * k / 8 + .3
-        fl.eucalyptus(m, (.12 * math.cos(a), .12 * math.sin(a), .62), (math.cos(a), math.sin(a), .6), .19, 5, .028,
+    # Pack the mouth with roses and lift the centre so the flowers read above the rim.
+    sack_roses = [(('red', 'pink', 'red')[k % 3], rnd.uniform(.058, .074)) for k in range(24)]
+    fl.arrangement((0, 0, .61), .21, 82, sack_roses, m, 77, height=.95,
+                   stems_to=((0, 0, .55), (0, 0, .43), .06))
+    for k in range(10):
+        a = TAU * k / 10 + .3
+        fl.eucalyptus(m, (.12 * math.cos(a), .12 * math.sin(a), .62), (math.cos(a), math.sin(a), .6), .18, 5, .026,
                       90 + k)
+    for k in range(5):
+        a = k * fl.GOLDEN + .5
+        fl.limonium(m, (.08 * math.cos(a), .08 * math.sin(a), .63), (.65 * math.cos(a), .65 * math.sin(a), 1),
+                    rnd.uniform(.22, .26), 110 + k, twigs=4, florets=7)
 
 
 # ---------------------------------------------------------------- eight-second loop
