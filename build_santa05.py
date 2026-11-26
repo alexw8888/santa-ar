@@ -12,6 +12,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from mathutils import Matrix, Vector  # noqa: E402
 
 import santa_kit as kit  # noqa: E402
+from santa_model import head_height  # noqa: E402
 from santa_kit import (TAU, aim_eyes, ball, bound, cord, ellipsoid, frame, hold, label, look,  # noqa: E402
                        material, place, profile, ramp, recolor, rigid, surface, turn)
 
@@ -219,8 +220,8 @@ CAMERA = Vector((-.05, -3.2, 1.6))
 ACTION = 5                            # seconds: raise, bite, lower and chew
 REST = 3                              # seconds holding the bitten bun before the loop brings back a whole one
 FRAMES = (ACTION + REST) * 24 + 1
-LIP = Vector((0, -.205, 1.600))       # his lower lip at rest: the bitten edge of the bun comes up to here
-MOUTH = Vector((0, -.15, 1.625))      # just behind his lips, where the bitten piece disappears
+LIP = Vector((0, -.209, head_height(1.588)))       # the bitten edge rises to his lower lip
+MOUTH = Vector((0, -.15, head_height(1.625)))      # the bitten piece disappears behind his lips
 EDGE = .125                           # from the bun's centre out along TOP to its crust over the bite
 LOW = (BUN, turn(8, 'X'))             # held in front of his chest, the top tipped a little to the viewer
 # Raised under his chin: rolled so the bite site is the highest point of the bun, then tipped back and

@@ -26,6 +26,7 @@ import santa_motion  # noqa: E402
 ARGS = sys.argv[sys.argv.index('--') + 1:] if '--' in sys.argv else []
 EYES = Vector((0, -.13, 1.79))
 EYE_LIMIT = math.radians(19)
+MAX_DOWNWARD_NOD = math.radians(13)
 # The cupped left glove wraps a vertical cylinder (about 5 cm radius) whose axis sits at this offset
 # from the wrist; the right glove is its mirror image. Rotating a hand turns the offset with it.
 GRIP = {'L': Vector((-.16, -.04, 0)), 'R': Vector((.16, -.04, 0))}
@@ -487,7 +488,8 @@ def look(target, extra_nod=0, turn_share=.6, nod_share=.35):
     """Turn and nod the head part of the way toward `target`; the eyes do the rest."""
     d = Vector(target) - EYES
     yaw = turn_share * math.atan2(d.x, -d.y)
-    pitch = nod_share * math.atan2(-d.z, math.hypot(d.x, d.y)) + extra_nod
+    # A deep bow puts the portrait's lower face behind the coat collar.
+    pitch = min(MAX_DOWNWARD_NOD, nod_share * math.atan2(-d.z, math.hypot(d.x, d.y)) + extra_nod)
     rig.pose.bones['head'].rotation_quaternion = Quaternion((0, 1, 0), yaw) @ Quaternion((1, 0, 0), pitch)
     bpy.context.view_layer.update()
 

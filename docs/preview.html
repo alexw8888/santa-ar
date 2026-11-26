@@ -34,6 +34,15 @@
     header { text-align: center; max-width: 1100px; margin: 0 auto 20px; }
     header h1 { margin: 0; font-size: 24px; }
     header p { margin: 6px 0 0; color: var(--muted); font-size: 14px; }
+    .portrait {
+      display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr));
+      align-items: center; max-width: 760px; margin: 0 auto 24px; overflow: hidden;
+      border: 1px solid var(--line); border-radius: 16px; background: var(--card);
+    }
+    .portrait img { display: block; width: 100%; height: auto; }
+    .portrait-copy { padding: 20px 24px; }
+    .portrait-copy h2 { margin-bottom: 14px; }
+    .portrait-copy a { display: block; width: fit-content; margin: 8px 0; color: var(--accent); font-weight: 600; }
     ul {
       list-style: none; margin: 0 auto; padding: 0; max-width: 1100px;
       display: grid; gap: 16px; grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr));
@@ -66,10 +75,21 @@
     <p>Tap a Santa to open him in your space on an iPhone, iPad or Android phone.</p>
   </header>
 
+  <section class="portrait" aria-labelledby="portrait-title">
+    <img src="santa-head-portrait.webp?v=head-portrait-11-studio" width="1080" height="1080"
+         alt="Studio render of the revised Santa head with laughing eyes, gold glasses, and a curled white beard">
+    <div class="portrait-copy">
+      <h2 id="portrait-title">Santa head portrait</h2>
+      <a href="santa-head-portrait.webp?v=head-portrait-11-studio">View front portrait</a>
+      <a href="santa-head-portrait-side.webp?v=head-portrait-11-studio">View side portrait</a>
+      <a href="santa01b.html?view=face">Inspect the face in 3D</a>
+    </div>
+  </section>
+
   <ul>
     <li>
       <a class="card" href="santa01b.html">
-        <img class="poster" src="santa01-poster.webp?v=chai-6" alt="Santa holding a golden brass kettle and a glass of chai" loading="lazy" width="800" height="1000">
+        <img class="poster" src="santa01-poster.webp?v=head-portrait-11" alt="Santa holding a golden brass kettle and a glass of chai" loading="lazy" width="800" height="1000">
         <div class="text">
           <div class="edition">Santa 01 &middot; Pour &amp; enjoy the chai</div>
           <h2>Santa&rsquo;s chai break</h2>
@@ -79,7 +99,7 @@
     </li>
     <li>
       <a class="card" href="santa02.html">
-        <img class="poster" src="santa02-poster.webp?v=groceries-4" alt="Santa cradling an armful of Aisle24 groceries" loading="lazy" width="800" height="900">
+        <img class="poster" src="santa02-poster.webp?v=head-portrait-11" alt="Santa cradling an armful of Aisle24 groceries" loading="lazy" width="800" height="900">
         <div class="text">
           <div class="edition">Santa 02 &middot; Grocery run</div>
           <h2>Santa at Aisle24</h2>
@@ -89,7 +109,7 @@
     </li>
     <li>
       <a class="card" href="santa03.html">
-        <img class="poster" src="santa03-poster.webp?v=bouquet-7" alt="Santa with a Bouquet Café mug and a wrapped bouquet" loading="lazy" width="800" height="900">
+        <img class="poster" src="santa03-poster.webp?v=head-portrait-11" alt="Santa with a Bouquet Café mug and a wrapped bouquet" loading="lazy" width="800" height="900">
         <div class="text">
           <div class="edition">Santa 03 &middot; Coffee and flowers</div>
           <h2>Santa at Bouquet Café</h2>
@@ -99,7 +119,7 @@
     </li>
     <li>
       <a class="card" href="santa04.html">
-        <img class="poster" src="santa04-poster.webp?v=landmark-4" alt="Santa holding a little lit tree with the Landmark on Robson sign" loading="lazy" width="800" height="900">
+        <img class="poster" src="santa04-poster.webp?v=head-portrait-11" alt="Santa holding a little lit tree with the Landmark on Robson sign" loading="lazy" width="800" height="900">
         <div class="text">
           <div class="edition">Santa 04 &middot; A little lit tree</div>
           <h2>Santa at Landmark on Robson</h2>
@@ -109,7 +129,7 @@
     </li>
     <li>
       <a class="card" href="santa05.html">
-        <img class="poster" src="santa05-poster.webp?v=mello-6" alt="Santa with a strawberry cream bun beside the Mello sack" loading="lazy" width="800" height="900">
+        <img class="poster" src="santa05-poster.webp?v=head-portrait-11" alt="Santa with a strawberry cream bun beside the Mello sack" loading="lazy" width="800" height="900">
         <div class="text">
           <div class="edition">Santa 05 &middot; Cream bun break</div>
           <h2>Santa at Mello</h2>
@@ -119,7 +139,7 @@
     </li>
     <li>
       <a class="card" href="santa06.html">
-        <img class="poster" src="santa06-poster.webp?v=yunqueen-6" alt="Santa with a Yunqueen rice noodle bowl and a yellow duck" loading="lazy" width="800" height="900">
+        <img class="poster" src="santa06-poster.webp?v=head-portrait-11" alt="Santa with a Yunqueen rice noodle bowl and a yellow duck" loading="lazy" width="800" height="900">
         <div class="text">
           <div class="edition">Santa 06 &middot; Rice noodle bowl</div>
           <h2>Santa at Yunqueen</h2>

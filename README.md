@@ -19,12 +19,12 @@ The exporter also writes `santaNN-android.glb` with `scene_viewer_glb.py`: the s
 
 | Edition | Triangles (scene → export) | GLB | USDZ |
 | --- | --- | --- | --- |
-| Santa 01 | 138k → 103k | 4.5 MB | 3.6 MB |
-| Santa 02 | 152k → 118k | 4.8 MB | 6.0 MB |
-| Santa 03 | 271k → 186k | 8.4 MB | 10.3 MB |
-| Santa 04 | 156k → 121k | 5.7 MB | 6.3 MB |
-| Santa 05 | 140k → 105k | 4.5 MB | 5.6 MB |
-| Santa 06 | 158k → 123k | 5.2 MB | 6.3 MB |
+| Santa 01 | 152k → 127k | 5.2 MB | 4.2 MB |
+| Santa 02 | 166k → 141k | 5.5 MB | 7.1 MB |
+| Santa 03 | 316k → 228k | 10.0 MB | 12.5 MB |
+| Santa 04 | 170k → 145k | 6.3 MB | 7.4 MB |
+| Santa 05 | 154k → 128k | 5.2 MB | 6.7 MB |
+| Santa 06 | 172k → 147k | 5.9 MB | 4.8 MB |
 
 ## How the editions are built
 
@@ -48,19 +48,27 @@ Replace `01` with the edition number for the others. Add shot names after the pr
 
 ## The base Santa
 
-Modelled on the Santa 01 reference photo (`photos/01 Chaiiwala Santa.jpg`):
+The body follows the Santa 01 reference photo (`photos/01 Chaiiwala Santa.jpg`). The head follows the front and side references (`photos/head.png` and `photos/side.png`), with a folded scarlet cap, low oval spectacles, and swept beard curls.
 
 - A portly build: a round belly pushed forward over the belt, broad shoulders and thick sleeves and trousers.
 - A wide stance: the legs splay out from the hips and the boots turn outward, as in the photo.
 - Each eye has its own bone (parented to the head), so editions aim the irises at what Santa is looking at while his head turns and nods part of the way.
-- The face grins with a broad open mouth (lips, upper teeth, tongue) whose corners lift into the cheeks, smile creases, wide eyes, bushy arched eyebrows, wire spectacles, a big red nose and round rosy cheeks.
-- The beard is wide and full, made of wavy, flattened locks; the moustache sweeps up into the cheeks; sideburns join the hat to the beard.
+- The eyelids and lips share the face mesh. The skin materials use feathered samples of the reference's cheeks, nose, and forehead along with a seamless pore sample.
+- Wavy beard locks, curled temple hair, and the upswept moustache follow the portrait. The lower beard blends toward the chest bone so the upper beard and mouth can follow a nod.
 - The red garments use a generated photographic velvet swatch (`assets/textures/santa01-velvet-source.png`) with fiber normals, varying roughness and soft sheen, at a consistent physical UV scale. Core color/normal/roughness maps also support AR viewers that do not render the optional sheen extension.
 - The fur trim is plush, with soft clumps and fibers; the pompom is round and fluffy.
 - Each shoulder is a round velvet ball centred on the arm joint (`SHOULDER_BALL` in `santa_model.py`). Turning about its own centre it keeps the same round shape at any arm angle, and the top of the sleeve always stays tucked inside it, so the shoulder is never pointed and the sleeve never pokes out of the coat.
 - Brown leather gloves; worn mid-brown work boots with thick soles, heels, toe-cap seams and brass ankle buckles; a wide leather belt with a large brass buckle.
 - Generated textures are converted from linear to sRGB when written; the scene keeps them at full resolution (velvet 1024 px), and the exporter halves them into JPEG for the GLB and USDZ.
 - AR Quick Look fixes: the mouth cavity faces the viewer because Quick Look culls back faces even on double-sided meshes, and the exporter patches translucent materials' opacity into the USDZ (Blender writes every UsdPreviewSurface as opaque).
+
+After rebuilding the base, render the head in Blender:
+
+```sh
+blender -b santa_base.blend --python-exit-code 1 -P render_santa_head.py -- both
+```
+
+This writes the front and side portraits under `previews/`, WebP copies for `docs/preview.html`, and an editable portrait scene at `generated/santa-head-portrait.blend`. The scene adds fine hair curves to the shared rigged head mesh for the close-up. Use `-- draft both` to render smaller comparison images under `generated/`.
 
 ## Santa 01
 

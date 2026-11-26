@@ -9,6 +9,7 @@ indices in GROUPS. Colours are linear; texture maps are converted to sRGB when w
 """
 import bpy, bmesh, math, os, random
 import numpy as np
+from santa_portrait_fit import fit as fit_portrait
 import zlib, struct
 from mathutils import Vector, Matrix, Quaternion, Euler
 
@@ -106,12 +107,13 @@ def pbr_maps(name, color, kind, size=512):
         strength = 4.5
     elif kind == 'hair':
         # Fine strands that run along each lock (texture v), grouped into soft bundles.
-        strands = noise(size, 1.4, 30, seed=seed)
+        strands = noise(size, 1.2, 39, seed=seed)
         bundles = noise(size, 6, 50, seed=seed + 1)
-        height = .55 * strands + .55 * bundles
+        finer = noise(size, .76, 70, seed=seed + 2)
+        height = .42 * strands + .36 * bundles + .32 * finer
         shade = unit(1.5 * height)
-        rgb = base * (.74 + .30 * shade[:, :, None])
-        rough = .62 - .10 * shade
+        rgb = base * (.63 + .40 * shade[:, :, None])
+        rough = .64 - .12 * shade
         occlusion = .82 + .18 * shade
         strength = 3.0
     elif kind in ('leather', 'boot', 'belt'):
@@ -163,7 +165,7 @@ def material(name, color, rough=.5, metal=0, texture=None, alpha=1, sheen=0):
             return node.outputs['Color']
         nt.links.new(tex(color_im), bs.inputs['Base Color'])
         normal = nt.nodes.new('ShaderNodeNormalMap')
-        normal.inputs['Strength'].default_value = {'cloth': .9, 'plush': .8, 'hair': .7}.get(texture, .5)
+        normal.inputs['Strength'].default_value = {'cloth': .9, 'plush': .8, 'hair': .58}.get(texture, .5)
         nt.links.new(tex(normal_im), normal.inputs['Color'])
         nt.links.new(normal.outputs['Normal'], bs.inputs['Normal'])
         separate = nt.nodes.new('ShaderNodeSeparateColor')
@@ -189,8 +191,8 @@ def material(name, color, rough=.5, metal=0, texture=None, alpha=1, sheen=0):
 CHARACTER_MATERIALS = [
     ('RED', 'Crimson_velvet', (.44, .012, .023), dict(texture='cloth')),
     ('FUR', 'Ivory_plush_fur', (.80, .77, .70), dict(texture='plush', sheen=.5)),
-    ('HAIR', 'Silver_beard', (.80, .80, .78), dict(texture='hair', sheen=.3)),
-    ('SKIN', 'Warm_skin', (.80, .42, .30), dict(rough=.55)),
+    ('HAIR', 'Silver_beard', (.86, .80, .72), dict(texture='hair', sheen=.34)),
+    ('SKIN', 'Warm_skin', (.54, .245, .148), dict(rough=.54)),
     ('ROSY', 'Rosy_nose', (.78, .25, .20), dict(rough=.45)),
     ('LEATHER', 'Brown_glove_leather', (.075, .030, .015), dict(texture='leather')),
     ('BOOT', 'Worn_boot_leather', (.11, .042, .017), dict(texture='boot')),
@@ -198,47 +200,170 @@ CHARACTER_MATERIALS = [
     ('SOLE', 'Dark_soles', (.016, .010, .007), dict(rough=.7)),
     ('BRASS', 'Golden_brass', (.74, .50, .17), dict(texture='brass')),
     ('GOLD', 'Polished_brass_edges', (.82, .60, .24), dict(rough=.2, metal=1)),
-    ('WHITE', 'Soft_eye_whites', (.92, .90, .84), dict(rough=.3)),
-    ('IRIS', 'Hazel_eyes', (.14, .065, .028), dict(rough=.3)),
+    ('WHITE', 'Soft_eye_whites', (.279, .224, .179), dict(rough=.43)),
+    ('IRIS', 'Hazel_eyes', (.053, .025, .010), dict(rough=.31)),
     ('BLACK', 'Pupils', (.006, .003, .002), dict(rough=.2)),
-    ('LAUGH', 'Laughing_mouth', (.018, .003, .002), dict(rough=.8)),
-    ('TEETH', 'Teeth', (.80, .76, .66), dict(rough=.35)),
-    ('TONGUE', 'Tongue', (.55, .12, .10), dict(rough=.5)),
-    ('LIP', 'Warm_lips', (.55, .17, .13), dict(rough=.5)),
+    ('LAUGH', 'Laughing_mouth', (.022, .004, .003), dict(rough=.62)),
+    ('NOSTRIL', 'Nose_recess', (.11, .022, .012), dict(rough=.56)),
+    ('TEETH', 'Teeth', (.70, .618, .467), dict(rough=.39)),
+    ('TONGUE', 'Tongue', (.25, .043, .035), dict(rough=.56)),
+    ('LIP', 'Warm_lips', (.55, .17, .13), dict(rough=.43)),
     ('STITCH', 'Leather_stitching', (.25, .14, .065), dict(rough=.75)),
     ('FACE', 'Laughing_face_skin', (.80, .42, .30), dict(rough=.55)),
+    ('WIRE', 'Spectacle_gold', (.57, .33, .095), dict(rough=.24, metal=1)),
+    ('HAT', 'Scarlet_hat_velvet', (.44, .012, .023), {}),
 ]
 for _key, _name, *_ in CHARACTER_MATERIALS:
     globals()[_key] = _name
 # Physical texture repeat, in meters, for materials whose look depends on scale.
-TILE = {RED: .36, FUR: .16, BOOT: .30, BELT: .30, LEATHER: .20}
+TILE = {RED: .36, HAT: .36, FUR: .16, BOOT: .30, BELT: .30, LEATHER: .20}
+
+
+def expression_creases(x, z, exp):
+    """Evaluate the same expression lines for the face mesh and skin maps."""
+    eye_x = abs(x) - .068
+    fold_z = 1.764 + 4.2 * eye_x ** 2 + .12 * eye_x
+    under_eye = exp(-(eye_x / .049) ** 4) * exp(-((z - fold_z) / .00245) ** 2)
+    under_eye += .69 * exp(-((eye_x - .006) / .045) ** 4
+                           - ((z - fold_z + .008 + .054 * eye_x) / .0019) ** 2)
+    under_eye += .35 * exp(-((eye_x - .011) / .039) ** 4
+                           - ((z - fold_z + .015 - .047 * eye_x) / .0017) ** 2)
+    temple_x = abs(x) - .104
+    crow = sum(weight * exp(-((temple_x - distance) / .020) ** 2
+                            - ((z - 1.776 - slope * temple_x) / .00165) ** 2)
+               for weight, distance, slope in ((1, .014, -.51), (.64, .020, -.19), (.46, .019, .15)))
+    forehead = exp(-(x / .082) ** 4) * (
+        exp(-((z - 1.858 - 2.1 * x ** 2) / .00185) ** 2)
+        + .53 * exp(-((z - 1.870 - 2.9 * x ** 2) / .00160) ** 2))
+    brow_furrow = exp(-((z - 1.829) / .018) ** 2) * (
+        exp(-((x - .010 - .21 * (z - 1.829)) / .00185) ** 2)
+        + .63 * exp(-((x + .012 + .16 * (z - 1.826)) / .00170) ** 2))
+    forehead += .66 * brow_furrow
+    return under_eye, crow, forehead
 
 
 def character_materials():
     """Create Santa's materials and generated textures, including the rosy-cheeked face map."""
     for key, name, color, options in CHARACTER_MATERIALS:
-        assert material(name, color, **options) == name
-    # Rosy, round cheeks blended into the face skin.
-    y, x = np.mgrid[0:512, 0:512].astype(float) / 511
-    face_x = (x - .5) * .354
-    face_z = (y - .5) * .376 + 1.727
-    blush = (np.exp(-((face_x - .108) / .060) ** 2 - ((face_z - 1.712) / .045) ** 2) +
-             np.exp(-((face_x + .108) / .060) ** 2 - ((face_z - 1.712) / .045) ** 2)) * .62
-    skin_linear = np.array((.80, .42, .30))[None, None, :]
-    rosy_linear = np.array((.80, .25, .21))[None, None, :]
-    face_linear = skin_linear * (1 - blush[:, :, None]) + rosy_linear * blush[:, :, None]
+        if name == HAT:
+            velvet = bpy.data.materials[RED].copy()
+            velvet.name = name
+            shader = velvet.node_tree.nodes['Principled BSDF']
+            shader.inputs['Specular IOR Level'].default_value = .09
+            shader.inputs['Sheen Weight'].default_value = .25
+            shader.inputs['Sheen Tint'].default_value = (.18, .005, .008, 1)
+            MATS.append(velvet)
+        else:
+            assert material(name, color, **options) == name
+    size = 768
+    y, x = np.mgrid[0:size, 0:size].astype(float) / (size - 1)
+    source = bpy.data.images.load(os.path.join(HERE, 'assets', 'textures', 'santa-portrait-skin-detail.png'))
+    source.colorspace_settings.name = 'Non-Color'
+    sample_width, sample_height = source.size
+    pixels = np.empty(sample_width * sample_height * 4, dtype=np.float32)
+    source.pixels.foreach_get(pixels)
+    sample = pixels.reshape(sample_height, sample_width, 4)[::-1, :, 0]
+    detail = sample[(y * size).astype(int) % sample_height, (x * size).astype(int) % sample_width] - .5
+    bpy.data.images.remove(source)
+    face_x = (x - .5) * .40
+    face_z = (.5 - y) * .43 + 1.727
+    cheek = np.exp(-((abs(face_x) - .113) / .062) ** 2 - ((face_z - 1.721) / .039) ** 2)
+    nose = np.exp(-(face_x / .053) ** 2 - ((face_z - 1.714) / .031) ** 2)
+    eye = np.exp(-((abs(face_x) - .068) / .047) ** 2 - ((face_z - 1.775) / .018) ** 2)
+    freckles = unit(2.5 * noise(size, 2, seed=30) - 4.6)
+    blush = np.clip(.84 * cheek + .90 * nose + .19 * eye, 0, 1)
+    nostrils = np.exp(-((abs(face_x) - .043) / .014) ** 2
+                      - ((face_z - 1.693 - .14 * (abs(face_x) - .043)) / .0039) ** 2)
+    smile_folds, crow_feet, forehead = expression_creases(face_x, face_z, np.exp)
+    skin_linear = np.array((.55, .258, .153))
+    rosy_linear = np.array((.52, .126, .079))
+    face_linear = (skin_linear + (rosy_linear - skin_linear) * blush[:, :, None])
+    color_variation = .033 * np.tanh(noise(size, 15, seed=90)) + .025 * np.tanh(noise(size, 3, seed=75))
+    face_linear *= (1 + color_variation - .20 * freckles * blush + .13 * detail)[:, :, None]
+    # Transfer color and small-scale relief from selected skin regions of the reference.
+    portrait = bpy.data.images.load(os.path.join(HERE, 'assets', 'textures', 'santa-portrait-skin-regions.png'))
+    portrait.colorspace_settings.name = 'Non-Color'
+    if tuple(portrait.size) != (size, size):
+        portrait.scale(size, size)
+    portrait_pixels = np.empty(size * size * 4, dtype=np.float32)
+    portrait.pixels.foreach_get(portrait_pixels)
+    rgba = portrait_pixels.reshape(size, size, 4)[::-1]
+    rgb, coverage = rgba[:, :, :3], rgba[:, :, 3]
+    reference_linear = np.where(rgb <= .04045, rgb / 12.92, ((rgb + .055) / 1.055) ** 2.4)
+    blend = .56 * coverage[:, :, None]
+    face_linear = face_linear * (1 - blend) + reference_linear * blend
+    face_linear *= (1 - .42 * nostrils - .123 * smile_folds - .091 * crow_feet - .057 * forehead)[:, :, None]
+    face_linear *= np.array((.91, .83, .79))
+    luma = rgb @ np.array((.26, .58, .16), dtype=np.float32)
+    low = sum(np.roll(luma, (dy, dx), axis=(0, 1)) for dy in (-3, 0, 3) for dx in (-3, 0, 3)) / 9
+    sample_relief = np.clip((luma - low) * 9, -.28, .28) * coverage ** 1.8
+    bpy.data.images.remove(portrait)
     face_image = image_file('Santa_rosy_cheeks', to_srgb(face_linear))
+    pores = np.minimum(0, noise(size, .8, seed=32) + .26)
+    microfolds = .24 * noise(size, 2.5, .55, seed=59)
+    face_height = (.62 * pores + microfolds + 1.36 * detail + sample_relief
+                   - .36 * smile_folds - .27 * crow_feet - .18 * forehead)
+    face_normal = image_file('Santa_skin_normal', normal_map(face_height, .44), 'Non-Color')
     face_material = bpy.data.materials[FACE]
-    face_tex = face_material.node_tree.nodes.new('ShaderNodeTexImage')
+    nodes, links = face_material.node_tree.nodes, face_material.node_tree.links
+    skin = nodes['Principled BSDF']
+    skin.inputs['Subsurface Weight'].default_value = .095
+    skin.inputs['Subsurface Scale'].default_value = .006
+    skin.inputs['Specular IOR Level'].default_value = .28
+    face_tex = nodes.new('ShaderNodeTexImage')
     face_tex.image = face_image
-    face_material.node_tree.links.new(face_tex.outputs['Color'], face_material.node_tree.nodes['Principled BSDF'].inputs['Base Color'])
+    links.new(face_tex.outputs['Color'], skin.inputs['Base Color'])
+    pores_tex = nodes.new('ShaderNodeTexImage')
+    pores_tex.image = face_normal
+    normals = nodes.new('ShaderNodeNormalMap')
+    normals.inputs['Strength'].default_value = .67
+    links.new(pores_tex.outputs['Color'], normals.inputs['Color'])
+    links.new(normals.outputs['Normal'], skin.inputs['Normal'])
+
+    # The curved eye patch uses angular U and radial V, so individual rays follow the iris.
+    y, x = np.mgrid[0:256, 0:512].astype(float)
+    radial, angle = y / 255, x / 512 * TAU
+    rays = (.30 * np.cos(39 * angle + 2.9 * radial)
+            + .18 * np.cos(83 * angle - 3.7 * radial)
+            + .15 * np.cos(137 * angle + 5.1 * radial))
+    iris = np.array((.039, .019, .008)) * (1 + rays[:, :, None])
+    pupil = np.clip((radial - .62) / .043, 0, 1)
+    edge = np.clip((radial - .89) / .108, 0, 1)
+    dark = edge * .85 + (1 - pupil) * .96
+    iris = iris * (1 - dark[:, :, None]) + np.array((.004, .0027, .0018)) * dark[:, :, None]
+    eye_image = image_file('Santa_iris', to_srgb(iris))
+    eye = bpy.data.materials[IRIS].node_tree
+    eye_texture = eye.nodes.new('ShaderNodeTexImage')
+    eye_texture.image = eye_image
+    iris_shader = eye.nodes['Principled BSDF']
+    iris_shader.inputs['Specular IOR Level'].default_value = .29
+    eye.links.new(eye_texture.outputs['Color'], iris_shader.inputs['Base Color'])
+
+    # The lip blends into the cheek, with fine creases along the curve of the smile.
+    blend = np.linspace(1, 0, 256)[:, None, None]
+    lip = np.array((.54, .117, .073)) * (1 - blend) + np.array((.55, .193, .099)) * blend
+    striae = .35 * noise(256, .55, 6, seed=583) + .14 * noise(256, 2.1, 5, seed=709)
+    striae *= np.sin(np.pi * blend[:, :, 0]) ** .7
+    lip_image = image_file('Santa_lip_color', to_srgb(lip * (1 + .13 * striae[:, :, None])))
+    lip_normal = image_file('Santa_lip_normal', normal_map(striae, .73), 'Non-Color')
+    lips = bpy.data.materials[LIP].node_tree
+    lip_texture = lips.nodes.new('ShaderNodeTexImage')
+    lip_texture.image = lip_image
+    lips.links.new(lip_texture.outputs['Color'], lips.nodes['Principled BSDF'].inputs['Base Color'])
+    grooves = lips.nodes.new('ShaderNodeTexImage')
+    grooves.image = lip_normal
+    lip_bump = lips.nodes.new('ShaderNodeNormalMap')
+    lip_bump.inputs['Strength'].default_value = .32
+    lips.links.new(grooves.outputs['Color'], lip_bump.inputs['Color'])
+    lips.links.new(lip_bump.outputs['Normal'], lips.nodes['Principled BSDF'].inputs['Normal'])
 
 
 def reuse_materials():
     """Point the helpers at the materials of an opened santa_base.blend (for adding props)."""
     MATS.clear()
     for key, name, *_ in CHARACTER_MATERIALS:
-        MATS.append(bpy.data.materials[name])
+        if name in bpy.data.materials:
+            MATS.append(bpy.data.materials[name])
 
 
 # -------------------- skeleton and prop anchors
@@ -277,10 +402,24 @@ for side, sign in (('L', 1), ('R', -1)):
               (f'shin.{side}', (sign * .205, 0, .46), (sign * .225, 0, .12), f'thigh.{side}'),
               (f'foot.{side}', (sign * .225, 0, .12),
                (sign * (.225 + .17 * math.sin(math.radians(14))), -.17 * math.cos(math.radians(14)), .06), f'shin.{side}')]
-# Eye bones pivot a little behind each iris (in the head's widened space, see the x1.10/y1.06 scale
-# below) and point forward, so rotating them slides the iris across the eye white toward a target.
-HEAD_SCALE = Vector((1.10, 1.06, 1))
-EYE_PIVOTS = {side: Vector((sign * .062, -.095, 1.789)) * HEAD_SCALE for side, sign in (('L', 1), ('R', -1))}
+# Eye bones pivot a little behind each iris in the widened head and point forward.
+HEAD_SCALE = Vector((1.22, 1.06, 1))
+HEAD_HEIGHTS = np.array([
+    (1.30, 1.30), (1.32, 1.32), (1.47, 1.446), (1.535, 1.505), (1.58, 1.539),
+    (1.62, 1.576), (1.66, 1.622), (1.70, 1.680), (1.73, 1.721),
+    (1.77, 1.755), (1.80, 1.786), (1.855, 1.850), (1.89, 1.894),
+    (1.92, 1.928), (2.03, 2.030), (2.20, 2.20),
+])
+
+
+def head_height(z):
+    """Map sculpt heights to the reference proportions while keeping the chin and crown in place."""
+    return np.interp(z, HEAD_HEIGHTS[:, 0], HEAD_HEIGHTS[:, 1])
+
+
+EYE_CENTER = (.067, -.102, 1.774)
+EYE_PIVOTS = {side: Vector(fit_portrait(np.array((sign * EYE_CENTER[0], EYE_CENTER[1], head_height(EYE_CENTER[2]))) * np.array(HEAD_SCALE)))
+              for side, sign in (('L', 1), ('R', -1))}
 for side, pivot in EYE_PIVOTS.items():
     BONES.append((f'eye.{side}', pivot, pivot + Vector((0, -.04, 0)), 'head'))
 SEG ={name: (Vector(h), Vector(t)) for name, h, t, parent in BONES}
@@ -336,7 +475,11 @@ def waves(count, along, around_max):
 def wave_value(ws, s, a):
     return sum(math.sin(f * s + k * a + p) for f, k, p in ws) / math.sqrt(len(ws) / 2)
 
-def ellipsoid(c, r, mat, bones='head', seg=24, rings=14, direction=None, euler=None, lumpy=0):
+def face_uv(co):
+    return (co.x / .40 + .5, (co.z - 1.727) / .43 + .5)
+
+
+def ellipsoid(c, r, mat, bones='head', seg=24, rings=14, direction=None, euler=None, lumpy=0, warp=None):
     rot = Matrix.Identity(3)
     if direction is not None: rot = Vector(direction).to_track_quat('Z', 'Y').to_matrix()
     if euler is not None:
@@ -353,12 +496,15 @@ def ellipsoid(c, r, mat, bones='head', seg=24, rings=14, direction=None, euler=N
             offset = v.co - c
             value = sum(math.sin(k.dot(offset) + p) for k, p in dirs) / math.sqrt(5)
             v.co += offset.normalized() * size * lumpy * value
+    if warp:
+        for v in verts:
+            v.co = warp(v.co)
     faces = {face for v in verts for face in v.link_faces}
     if mat == FACE:
         for face in faces:
             for loop in face.loops:
                 co = loop.vert.co
-                loop[UV].uv = ((co.x / .177 + 1) * .5, (co.z - 1.727) / .376 + .5)
+                loop[UV].uv = face_uv(co)
     elif mat in TILE:
         around = TAU * (r[0] + r[1]) / 2 / TILE[mat]
         for face in faces:
@@ -471,12 +617,6 @@ def fur_ring(c, normal, major, minor, bones, depth=None, lumpy=.09):
     sides = max(48, int(TAU * major / .012))
     torus(c, normal, major, minor, FUR, bones, depth=depth, sides=sides, cross=16, lumpy=lumpy)
 
-def hair_lock(points, radius, bones='head', sides=8, flat=.6, taper=None):
-    taper = taper or [.55, .85, 1, 1, .96, .9, .82, .7, .55, .38, .2, .06]
-    radii = [radius * taper[min(len(taper) - 1, round(i * (len(taper) - 1) / (len(points) - 1)))] for i in range(len(points))]
-    tube(points, radii, HAIR, bones, sides=sides, sub=1, flat=flat)
-
-
 def character():
     """Model the body, clothes, face, beard, cap, sleeves and the cupped left glove into `bm`."""
     # -------------------- coat, trousers, belt and boots
@@ -548,121 +688,8 @@ def character():
         p = [at(-.036, -.112, .186), at(.036, -.112, .186), at(.036, -.112, .244), at(-.036, -.112, .244), at(-.036, -.112, .186)]
         tube(p, [.0055] * 5, GOLD, f'foot.{side}', sides=6, sub=2)
 
-    # -------------------- laughing face, glasses, brows and drooping cap
-    ellipsoid((0, .012, 1.727), (.177, .153, .188), FACE, seg=48, rings=32)
-    for sign in (-1, 1):
-        ellipsoid((sign * .17, .012, 1.735), (.033, .027, .052), SKIN, seg=20, rings=14)
-        # Round, raised, rosy cheeks.
-        ellipsoid((sign * .108, -.102, 1.720), (.066, .044, .049), FACE, seg=32, rings=20)
-        # Wide-open, happy eyes.
-        ellipsoid((sign * .066, -.117, 1.788), (.037, .021, .034), WHITE, seg=28, rings=18)
-        # Irises are modelled looking straight ahead; their eye bones aim them at the glass each frame.
-        eye = 'eye.L' if sign > 0 else 'eye.R'
-        ellipsoid((sign * .062, -.135, 1.789), (.020, .009, .023), IRIS, eye, seg=24, rings=14)
-        ellipsoid((sign * .062, -.142, 1.790), (.010, .004, .012), BLACK, eye, seg=20, rings=12)
-        ellipsoid((sign * .062 - .006, -.146, 1.800), (.005, .0025, .006), WHITE, eye, seg=12, rings=8)
-        # Raised upper lids, smile creases under the eyes and crow's feet.
-        tube([(sign * .030, -.126, 1.806), (sign * .066, -.140, 1.825), (sign * .102, -.118, 1.809)],
-             [.004, .0065, .0035], SKIN, sides=8, sub=4)
-        tube([(sign * .036, -.130, 1.762), (sign * .067, -.140, 1.753), (sign * .098, -.124, 1.762)],
-             [.003, .005, .003], FACE, sides=8, sub=4)
-        for k in range(3):
-            tube([(sign * .106, -.110, 1.772 + k * .011), (sign * .124, -.098, 1.768 + k * .016), (sign * .136, -.084, 1.766 + k * .021)],
-                 [.0018, .0022, .0008], SKIN, sides=6, sub=3)
-        # Bushy, arched white eyebrows made of clumps.
-        for k in range(7):
-            j = lambda s=.004: rng.uniform(-s, s)
-            lift = rng.uniform(-.004, .006)
-            hair_lock([(sign * (.022 + j()), -.130 + j(.002), 1.838 + lift),
-                       (sign * (.050 + j()), -.146 + j(.002), 1.858 + lift + j()),
-                       (sign * (.082 + j()), -.141 + j(.002), 1.856 + lift + j()),
-                       (sign * (.110 + j()), -.120 + j(.002), 1.836 + lift),
-                       (sign * (.130 + j()), -.096, 1.818 + lift)],
-                      rng.uniform(.009, .0125), sides=8, flat=.7)
-        # Small round wire spectacles.
-        torus((sign * .066, -.158, 1.787), (0, 1, 0), .043, .0022, GOLD, sides=48, cross=6, depth=.043)
-        tube([(sign * .109, -.152, 1.792), (sign * .169, -.08, 1.798), (sign * .179, .01, 1.783)],
-             [.0022] * 3, GOLD, sides=6, sub=3)
-    tube([(-.023, -.162, 1.795), (0, -.172, 1.800), (.023, -.162, 1.795)], [.0022] * 3, GOLD, sides=6, sub=3)
-    # Big round red nose.
-    ellipsoid((0, -.160, 1.733), (.051, .044, .045), ROSY, seg=32, rings=20)
-
-    # Open laughing mouth: a D-shaped opening with lips, upper teeth, tongue and a dark cavity.
-    # A broad grin: wider, deeper, with the corners pulled well up into the cheeks.
-    MC, MW, MT, MB, MY = 1.644, .066, .011, .044, -.190
-    def mouth_outline(t, inset=1):
-        s = math.sin(t)
-        x = MW * math.cos(t) * inset
-        z = MC + (MT if s > 0 else MB) * s * inset + .022 * math.cos(t) ** 4
-        return Vector((x, MY + .020 * (x / MW) ** 2, z))
-    ellipsoid((0, -.131, 1.648), (.090, .036, .046), FACE, seg=32, rings=20)
-    for sign in (-1, 1):
-        # Smile creases curving from beside the nose down around the mouth corners.
-        tube([(sign * .052, -.170, 1.708), (sign * .078, -.165, 1.682), (sign * .084, -.160, 1.658)],
-             [.0025, .0045, .0025], FACE, sides=8, sub=4)
-    outline = [mouth_outline(TAU * k / 48) for k in range(49)]
-    tube(outline, [.0055 + .003 * max(0, -math.sin(TAU * k / 48)) for k in range(49)], LIP, sides=8, sub=1, cap=False)
-    rings = []
-    for s in (1, .75, .5, .25):
-        ring = []
-        for k in range(48):
-            p = mouth_outline(TAU * k / 48, s)
-            ring.append(bm.verts.new(p + Vector((0, .003 + (1 - s) * .016, 0))))
-        rings.append(ring)
-    middle = bm.verts.new(Vector((0, MY + .022, MC - .010)))
-    for a, b in zip(rings, rings[1:]):
-        for k in range(48):
-            uv_face((a[k], b[k], b[(k + 1) % 48], a[(k + 1) % 48]), ((0, 0), (0, 1), (1, 1), (1, 0)))
-    for k in range(48):
-        uv_face((rings[-1][k], middle, rings[-1][(k + 1) % 48]), ((0, 0), (.5, 1), (1, 0)))
-    finish([v for ring in rings for v in ring] + [middle], LAUGH, 'head')
-    teeth = [mouth_outline(t, .86) + Vector((0, .003, -.004)) for t in [math.pi * (.15 + .7 * k / 12) for k in range(13)]]
-    tube(teeth, [.003] + [.0075] * 11 + [.003], TEETH, sides=10, sub=1, flat=.45)
-    ellipsoid((0, MY + .012, MC - .028), (.040, .011, .012), TONGUE, seg=24, rings=12)
-
-    # A full, wide beard: shaped underlay plus layered, wavy, flattened locks.
-    beard_z = [1.25, 1.28, 1.35, 1.42, 1.50, 1.57, 1.63, 1.70]
-    beard_w = [.03, .09, .16, .20, .222, .222, .21, .18]
-    beard_y = [-.288, -.239, -.173, -.109, -.053, -.016, -.002, .021]
-    lathe((0, 0, 0), list(zip(beard_z, beard_w, beard_y)), HAIR, 'head', sides=48, ellipse=.73)
-    for i in range(230):
-        side = rng.uniform(-.98, .98)
-        startz = rng.uniform(1.46, 1.71)
-        if abs(side) < .45:
-            startz = min(startz, 1.596)  # keep the open mouth clear
-        endz = max(1.258, startz - rng.uniform(.14, .34))
-        phase = rng.uniform(0, TAU); amp = rng.uniform(.006, .013); waves_n = rng.uniform(.9, 1.7)
-        points = []
-        for j in range(12):
-            u = j / 11
-            z = startz + (endz - startz) * u
-            width = float(np.interp(z, beard_z, beard_w))
-            center_y = float(np.interp(z, beard_z, beard_y))
-            x = side * width * (1 - .12 * u) + amp * math.sin(u * TAU * waves_n + phase) * math.sin(math.pi * min(1, u * 1.4))
-            y = center_y - width * .73 * math.sqrt(max(.03, 1 - (x / max(width, .001)) ** 2)) - .007
-            y -= .006 * math.cos(u * TAU * waves_n + phase)
-            points.append((x, y, z))
-        hair_lock(points, rng.uniform(.011, .019), flat=.55)
-    # Swept, bushy moustache curling up into the cheeks.
-    for sign in (-1, 1):
-        for k in range(13):
-            zb = 1.693 + rng.uniform(-.010, .012); yo = rng.uniform(-.008, .004); droop = rng.uniform(-.007, .007)
-            hair_lock([(sign * .006, -.196 + yo, zb + .008), (sign * .040, -.212 + yo, zb - .004 + droop),
-                       (sign * .080, -.203 + yo, zb - .009 + droop), (sign * .118, -.178 + yo, zb + .002),
-                       (sign * .145, -.144 + yo, zb + .024), (sign * .156, -.120 + yo, zb + .044 + droop)],
-                      rng.uniform(.011, .016), sides=9, flat=.75, taper=[.65, 1, 1.05, .9, .55, .15])
-        # Hair at the temples, and sideburns joining the hat to the beard.
-        ellipsoid((sign * .151, .036, 1.732), (.041, .105, .10), HAIR, seg=20, rings=14)
-        for k in range(12):
-            dx = rng.uniform(-.006, .008); dy = rng.uniform(-.03, .05)
-            hair_lock([(sign * (.166 + dx), .010 + dy, 1.89), (sign * (.183 + dx), -.010 + dy, 1.80),
-                       (sign * (.190 + dx), -.030 + dy * .7, 1.74), (sign * (.186 + dx), -.055 + dy * .5, 1.68),
-                       (sign * (.178 + dx), -.075 + dy * .3, 1.63)], rng.uniform(.012, .017), flat=.6)
-    # Cap crown drooping to one side, a plush brim and a big fluffy pompom.
-    tube([(0, .018, 1.91), (0, .045, 2.04), (.06, .07, 2.12), (.16, .07, 2.12), (.25, .06, 2.04), (.30, .045, 1.92)],
-         [.178, .15, .105, .075, .045, .018], RED, 'head', sides=32, sub=4)
-    fur_ring((0, .012, 1.925), (0, 0, 1), .176, .055, 'head', depth=.152)
-    ellipsoid((.30, .045, 1.875), (.070, .066, .070), FUR, seg=40, rings=28, lumpy=.07)
+    from santa_head import build_head
+    build_head()
 
     # -------------------- arms, tailored sleeves and gripping brown leather gloves
     for side in ('L', 'R'):
@@ -712,16 +739,16 @@ def mirror_left_glove():
 def objects(name, scene):
     """Turn `bm` into the skinned character mesh `name` and its armature `name`_Rig."""
     head_groups = [GROUPS[n] for n in ('head', 'eye.L', 'eye.R')]
-    for vertex in bm.verts:
-        if sum(vertex[DL].get(g, 0) for g in head_groups) > .99:
-            vertex.co.x *= HEAD_SCALE.x
-            vertex.co.y *= HEAD_SCALE.y
+    vertices = [v for v in bm.verts if sum(v[DL].get(g, 0) for g in head_groups) > .99]
+    points = np.array([tuple(v.co) for v in vertices]) * np.array(HEAD_SCALE)
+    points[:,2] = head_height(points[:,2])
+    for vertex, point in zip(vertices, fit_portrait(points)):
+        vertex.co = point
     bmesh.ops.recalc_face_normals(bm, faces=list(bm.faces))
-    # The mouth cavity is an open bowl, so recalc can't tell its inside from its outside. AR Quick Look
-    # (RealityKit) ignores doubleSided and culls back faces, so make the cavity face the viewer (-y).
-    laugh_index = next(i for i, m in enumerate(MATS) if m.name == LAUGH)
+    # Open facial surfaces must face the viewer in AR Quick Look, which culls back faces.
+    facial_surfaces = {i for i, material in enumerate(MATS) if material.name in (LAUGH, IRIS, LIP)}
     for face in bm.faces:
-        if face.material_index != laugh_index:
+        if face.material_index not in facial_surfaces:
             continue
         face.normal_update()
         if face.normal.y > 0:

@@ -92,6 +92,7 @@
       font-size: 13px;
     }
     model-viewer[ar-status="session-started"] .no-ar,
+    model-viewer[data-view="face"] .no-ar,
     model-viewer[ar-status="session-started"] .controls { display: none; }
 
     /* Hint shown while placing in WebXR */
@@ -120,9 +121,9 @@
 
   <model-viewer
     id="santa01"
-    data-src="santa01.glb?v=chai-6"
-    data-android-src="santa01-android.glb?v=chai-6"
-    ios-src="santa01.usdz?v=chai-6"
+    data-src="santa01.glb?v=head-portrait-11"
+    data-android-src="santa01-android.glb?v=head-portrait-11"
+    ios-src="santa01.usdz?v=head-portrait-11"
     alt="A laughing Santa in red velvet and brown leather boots pouring chai from a golden brass kettle into a glass, then raising it to his lips and sipping it"
     ar
     ar-modes="webxr scene-viewer quick-look"
@@ -131,7 +132,7 @@
     camera-controls
     touch-action="pan-y"
     camera-orbit="18deg 80deg auto"
-    poster="santa01-poster.webp?v=chai-6"
+    poster="santa01-poster.webp?v=head-portrait-11"
     shadow-intensity="1"
     shadow-softness="0.8"
     exposure="1.05"
@@ -143,6 +144,7 @@
     <div class="ar-prompt">Move your phone slowly to find the floor</div>
 
     <div class="controls">
+      <button id="toggleView" type="button" disabled>Face close-up</button>
       <button id="toggleAnim" type="button">Pause animation</button>
     </div>
 
@@ -154,9 +156,21 @@
   <script type="module">
     const mv = document.getElementById('santa01');
     const btn = document.getElementById('toggleAnim');
+    const viewButton = document.getElementById('toggleView');
+    const startFaceView = new URLSearchParams(window.location.search).get('view') === 'face';
     const hint = document.getElementById('launchHint');
     const tapHint = 'If AR doesn’t open automatically, tap “View in your space”.';
     const animation = 'Santa01_Natural_Shoulders_Drink_Cup_Tilt';
+
+    function setFaceView(enabled) {
+      mv.dataset.view = enabled ? 'face' : 'full';
+      mv.cameraTarget = enabled ? '-0.058m 1.70m 0.14m' : 'auto auto auto';
+      mv.minCameraOrbit = enabled ? 'auto auto 0.65m' : 'auto auto auto';
+      mv.cameraOrbit = enabled ? '11deg 91deg 1.98m' : '18deg 80deg auto';
+      viewButton.textContent = enabled ? 'Full body' : 'Face close-up';
+    }
+
+    viewButton.addEventListener('click', () => setFaceView(mv.dataset.view !== 'face'));
 
     // iPhone/iPad open the USDZ in AR Quick Look, which never uses the GLB. Same test as model-viewer.
     const quickLook = (() => {
@@ -191,7 +205,16 @@
       if (!mv.availableAnimations.includes(animation) && mv.availableAnimations.length) {
         mv.animationName = mv.availableAnimations[0];
       }
-      mv.play();
+      viewButton.disabled = false;
+      if (startFaceView) {
+        mv.pause();
+        mv.currentTime = 0;
+        btn.textContent = 'Play animation';
+        setFaceView(true);
+        mv.jumpCameraToGoal();
+      } else {
+        mv.play();
+      }
     }, { once: true });
 
     async function arAvailable() {
@@ -222,7 +245,7 @@
       }
     }
 
-    if (quickLook) {
+    if (quickLook && !startFaceView) {
       // Open Quick Look straight away so the USDZ downloads on its own, and hold the GLB back
       // until the person returns to the page or touches it.
       launchAR().then(opened => {

@@ -28,7 +28,7 @@ def _clamp(x, lo=0.0, hi=1.0):
 
 
 def ensure_secondary_rig(rig, character):
-    """Idempotently install cloth/hat control bones and smooth garment weights.
+    """Idempotently install secondary bones and blend garment and beard weights.
 
     Runs once, on the base character. No simulated cloth/constraints required.
     """
@@ -43,7 +43,7 @@ def ensure_secondary_rig(rig, character):
     # Give the coat and sleeves their own pivot points. Keep the hat tip a child
     # of head: it *always* follows the head and just adds a delayed wobble.
     specs = [('coat_hem', (0, 0, .74), (0, 0, .95), 'hips'),
-             ('hat_tip', (.22, .067, 2.095), (.33, .048, 1.89), 'head')]
+             ('hat_tip', (-.310, .097, 1.966), (-.459, .164, 1.622), 'head')]
     for side in ('L', 'R'):
         a = rig.data.bones['forearm.' + side].head_local.copy()
         b = rig.data.bones['forearm.' + side].tail_local.copy()
@@ -73,20 +73,19 @@ def ensure_secondary_rig(rig, character):
     for name in SECONDARY_BONES:
         groups[name] = character.vertex_groups.new(name=name)
 
-    # Material flags let us distinguish red coat and sleeves from adjacent
-    # skin, groceries and props even though Santa is one combined mesh.
+    # Material flags distinguish garments and hair from nearby skin and props.
     mesh = character.data
     flags = bytearray(len(mesh.vertices))
-    fabric = {'Crimson_velvet': 1, 'Ivory_plush_fur': 2}
+    materials = {'Crimson_velvet': 1, 'Scarlet_hat_velvet': 1, 'Ivory_plush_fur': 2, 'Silver_beard': 4}
     for poly in mesh.polygons:
         mat = mesh.materials[poly.material_index]
-        mask = fabric.get(mat.name, 0)
+        mask = materials.get(mat.get('head_surface', mat.name), 0)
         if mask:
             for idx in poly.vertices:
                 flags[idx] |= mask
 
     group_names = {vg.index: vg.name for vg in character.vertex_groups}
-    counts = {name: 0 for name in SECONDARY_BONES}
+    counts = dict.fromkeys((*SECONDARY_BONES, 'chest'), 0)
     for vertex in mesh.vertices:
         flag = flags[vertex.index]
         if not flag:
@@ -95,16 +94,19 @@ def ensure_secondary_rig(rig, character):
         owners = {name for name, value in originals if value > .01}
         x, y, z = vertex.co
         target, influence = None, 0.0
-        # Cap crown and pompom: blend head -> flexible hat tip. The front fur
-        # brim stays head-bound. Restrict to head-only red/fur vertices.
-        if owners == {'head'} and z > 1.82:
-            if flag & 1 and z > 1.91:
-                along = _clamp((x - .065) / .235)
-                elevation = _clamp((z - 1.92) / .10)
-                influence = .85 * along * elevation
-            elif flag & 2 and x > .19 and z > 1.83:
-                # Pompom falls below the red tip and should swing with it.
-                influence = .92 * _clamp((x - .19) / .105)
+        # The lower beard drapes over the chest as the upper beard follows a nod.
+        if flag & 4 and owners == {'head'}:
+            drape = _clamp((1.53 - z) / .18)
+            influence = .94 * drape * drape * (3 - 2 * drape)
+            target = 'chest'
+        # The crown and pompom follow the flexible hat tip. The brim follows the head.
+        elif owners == {'head'}:
+            if flag & 1:
+                along = _clamp((-x - .16) / .115)
+                drop = _clamp((2.06 - z) / .27)
+                influence = along * drop ** .65
+            elif flag & 2 and z < 1.78:
+                influence = 1.0
             target = 'hat_tip'
         # Coat material is bound to the three torso bones; leg fabric is bound
         # to thigh/shin bones and is consequently excluded automatically.
