@@ -155,9 +155,9 @@ def lip_position(a, t):
     return Vector((x, (1 - settle) * edge.y + settle * skin - volume, z))
 
 
-def nostril_outline(sign, a):
-    c, s = math.cos(a), math.sin(a)
-    return sign * (.043 + .0122 * c), 1.693 + .0038 * c + .0035 * s + .0022 * (1 - c * c)
+def nose_outline(a):
+    c,s = math.cos(a),math.sin(a)
+    return .066*c*(1-.46*max(0,s)), 1.714+(.047 if s>0 else .027)*s
 
 
 def join_skin_rings(rows, material, surface_uv=False):
@@ -182,7 +182,7 @@ def build_skull():
         [(rx * math.cos(TAU * i / count), cz + rz * math.sin(TAU * i / count)) for i in range(count)],
         *[[eye_outline(sign, TAU * i / EYE_SIDES, outer=True) for i in range(EYE_SIDES)] for sign in (-1, 1)],
         [(p.x, p.z) for p in [lip_position(TAU * i / SMILE_SIDES, 1) for i in range(SMILE_SIDES)]],
-        *[[nostril_outline(sign, TAU * i / 40) for i in range(40)] for sign in (-1, 1)],
+        [nose_outline(TAU*i/72) for i in range(72)],
     ]
     bounds = [(min(x for x, _ in ring), max(x for x, _ in ring),
                min(z for _, z in ring), max(z for _, z in ring)) for ring in boundary[1:]]
@@ -255,20 +255,6 @@ def build_skull():
     return [[vertices[i] for i in ring] for ring in rings[1:]]
 
 
-def build_nostril(attachment):
-    center = sum((v.co for v in attachment), Vector()) / len(attachment)
-    rows = [attachment]
-    for fraction, depth in ((.82, .0016), (.53, .0049), (.18, .0070)):
-        rows.append([model.bm.verts.new(center.lerp(v.co, fraction) + Vector((0, depth, 0)))
-                     for v in attachment])
-    for outer, inner in zip(rows, rows[1:]):
-        for i in range(len(attachment)):
-            j = (i + 1) % len(attachment)
-            model.bm.faces.new((outer[i], inner[i], inner[j], outer[j]))
-    model.bm.faces.new(rows[-1])
-    model.finish([v for row in rows[1:] for v in row], model.NOSTRIL, 'head')
-
-
 def build_eye(sign, attachment):
     ex, ey, ez = model.EYE_CENTER
     bone = 'eye.L' if sign > 0 else 'eye.R'
@@ -330,30 +316,65 @@ def build_eye(sign, attachment):
 
 
 def build_glasses():
-    bridge_ends = []
-    for sign in (-1, 1):
-        def rim(a):
-            c, s = math.cos(a), math.sin(a)
-            radius = (abs(c) ** 2.44 + abs(s) ** 2.44) ** (-1 / 2.44)
-            x = .082 + .056 * c * radius * (1 + .05 * s)
-            height = .035 if s >= 0 else .040
-            return (sign * x, -.266 + .065 * (x / .137) ** 2,
-                    1.755 + height * s * radius * (1 + .075 * c) + .0035 * c)
+    from mathutils.bvhtree import BVHTree
+    from santa_portrait_fit import CAMERAS, fit, from_portraits
 
-        points = [rim(TAU * i / 80) for i in range(81)]
-        model.tube(points, [.00215] * len(points), model.WIRE, sides=8, sub=1, cap=False)
-        bridge_ends.append(rim(math.pi - .52))
-        hinge = rim(.33)
-        model.ellipsoid(hinge, (.0055, .0037, .0041), model.WIRE, seg=16, rings=10)
-        model.tube([hinge, (sign * .158, -.130, 1.779), (sign * .179, -.061, 1.785),
-                    (sign * .188, .026, 1.774)], [.0027, .0021, .0018, .0014], model.WIRE, sides=8)
-        model.ellipsoid((sign * .034, -.229, 1.757), (.0048, .0024, .007), model.BRASS,
-                        seg=16, rings=10, euler=(0, sign * 21, 0))
-    bridge = [bridge_ends[0], (-.017, -.241, 1.777), (0, -.244, 1.782),
-              (.017, -.241, 1.777), bridge_ends[1]]
-    bridge = np.array(bridge)
-    points = [sample_path(bridge, i / 22) for i in range(23)]
-    model.tube(points, [.00195] * len(points), model.WIRE, sides=8, sub=1)
+    faces = [f for f in model.bm.faces if model.MATS[f.material_index].name == model.FACE]
+    vertices = list({v for f in faces for v in f.verts})
+    ids = {v:i for i,v in enumerate(vertices)}
+    points = np.array([tuple(v.co) for v in vertices])*np.array(model.HEAD_SCALE)
+    points[:,2] = model.head_height(points[:,2])
+    skin = BVHTree.FromPolygons(fit(points), [[ids[v] for v in f.verts] for f in faces])
+
+    def clear_skin(point):
+        # At the inner edge of the near lens the rounded ala can sit in front of
+        # the wire. Fit that edge to the physical cheek and nose in both views.
+        for view in (('front','side','front') if point[0]<0 else ('front',)):
+            camera = np.array(CAMERAS[view][0])
+            ray = point-camera
+            dist = np.linalg.norm(ray)
+            ray /= dist
+            hit,_,_,depth = skin.ray_cast(Vector(camera),Vector(ray),dist+.0023)
+            if hit is not None:
+                point = np.array(hit)-.0025*ray
+        return point
+
+    def rest(front, side, avoid_skin=False):
+        p = from_portraits(front, side, clear_skin if avoid_skin else None)
+        return Vector((p[0]/model.HEAD_SCALE.x, p[1]/model.HEAD_SCALE.y,
+                       np.interp(p[2], model.HEAD_HEIGHTS[:,1], model.HEAD_HEIGHTS[:,0])))
+
+    inner = []
+    for near in (True, False):
+        def rim(a):
+            c,s = math.cos(a),math.sin(a)
+            oval = (abs(c)**2.45 + abs(s)**2.45)**(-1/2.45)
+            fx = (227-37*c*oval) if near else (342+37*c*oval)
+            fy = (238 if near else 221) - 22.7*s*oval - .16*(fx-(227 if near else 342))
+            sx = (383-10.3*c) if near else (407+5.4*c)
+            sy = (215 if near else 210) - (25.5 if near else 21)*s - 3.5*c
+            return rest((fx,fy),(sx,sy),True)
+
+        samples = np.array([tuple(rim(TAU*i/64)) for i in range(64)])
+        # Bend the wire on a continuous oval. Local skin clearance must not leave
+        # kinks at the inner corner of the near lens.
+        angles = np.arange(64)*TAU/64
+        basis = np.column_stack((np.ones(64),np.cos(angles),np.sin(angles),
+                                 np.cos(2*angles),np.sin(2*angles)))
+        points = [Vector(p) for p in basis @ np.linalg.lstsq(basis,samples,rcond=None)[0]]
+        model.tube(points+points[:1], [.00165]*65, model.WIRE, sides=8, sub=1, cap=False)
+        inner.append(rim(math.pi-.45))
+        hinge = rim(.22)
+        model.ellipsoid(hinge,(.0044,.0028,.0037),model.WIRE,seg=14,rings=8)
+        if near:
+            arm = [hinge,rest((178,234),(349,213)),rest((160,228),(278,210)),
+                   rest((149,226),(222,217)),rest((149,233),(202,232))]
+        else:
+            arm = [hinge,(.158,-.130,1.779),(.179,-.061,1.785),(.188,.026,1.774)]
+        model.tube(arm,[.0023]+[.0018]*(len(arm)-2)+[.0013],model.WIRE,sides=8)
+    bridge = np.array([inner[0],rest((274,217),(397,207)),rest((283,215),(401,205)),
+                       rest((295,215),(404,206)),inner[1]])
+    model.tube([sample_path(bridge,i/24) for i in range(25)],[.0018]*25,model.WIRE,sides=8,sub=1)
 
 
 def build_smile(attachment):
@@ -414,21 +435,32 @@ def build_ear(sign):
          portrait=('Ear '+('left' if sign>0 else 'right'),(384,256),'ear'))
 
 
-def build_nose():
-    """Sculpt a projecting bulb with an undercut and alae around the nostril recesses."""
-    center = Vector((0, -.218, 1.715))
-    radii = Vector((.056, .060, .032))
-
-    def bulb(co):
-        x, y, z = (co-center)
-        # Round the paired alae into the bulb and pinch the lower lateral surface.
-        ala = math.exp(-((abs(x)-.041)/.016)**2 - ((z+.008)/.015)**2)
-        recess = math.exp(-((abs(x)-.035)/.010)**2 - ((z+.020)/.005)**2)
-        co.y -= (.010*ala - .012*recess) * max(0, -y/radii.y)
-        co.z += .0025*ala
-        return co
-
-    model.ellipsoid(center, radii, model.FACE, seg=72, rings=48, warp=bulb)
+def build_nose(attachment):
+    """Join the bridge and nostril wings to a single rounded, undercut nasal tip."""
+    rows = [attachment]
+    for i in range(1,31):
+        t = i/30
+        row = []
+        for j, vertex in enumerate(attachment):
+            a = TAU*j/len(attachment)
+            c,s = math.cos(a),math.sin(a)
+            wing = math.exp(-((abs(c)-.90)/.20)**2-((s+.38)/.31)**2)
+            x, z = .050*c+.006*wing*c, 1.716+.034*s-.002*wing
+            if t < .38:
+                u = t/.38
+                ease = u*u*(3-2*u)
+                co = vertex.co.lerp(Vector((x, -.224-.006*wing, z)), ease)
+                co.y -= .003*math.sin(math.pi*u)
+            else:
+                phi = min((t-.38)/.62,.9999)*math.pi/2
+                radial = math.cos(phi)
+                xx,zz = radial*x, 1.716+radial*(z-1.716)
+                pocket = math.exp(-((abs(xx)-.034)/.011)**2-((zz-1.695)/.0055)**2)
+                co = Vector((xx,-.224-.046*math.sin(phi)-.006*wing*radial+.009*pocket,zz))
+            row.append(model.bm.verts.new(co))
+        rows.append(row)
+    model.uv_face(rows[-1],[model.face_uv(v.co) for v in rows[-1]])
+    join_skin_rings(list(reversed(rows)), model.FACE, surface_uv=True)
 
 
 def beard_root_height(front):
@@ -509,7 +541,16 @@ def hair_paths():
         (.091, 1.841, .014, .0105),
         (.111, 1.824, .010, .0072), (.130, 1.807, .0018, .0024),
     ]
-    brow = [(x, front_y(x, z) - .25 * depth, z, width, depth) for x, z, width, depth in brow_profile]
+    from santa_portrait_fit import from_portraits
+    brow_front = [(245,173),(238,169),(224,166),(210,169),(192,178),(181,189),(170,202)]
+    brow_side = [(375,162),(370,156),(360,150),(346,154),(330,163),(319,174),(308,187)]
+    brow = []
+    for front, side, (_,_,width,depth) in zip(brow_front,brow_side,brow_profile):
+        p = from_portraits(front,side)
+        x = abs(p[0]/model.HEAD_SCALE.x)
+        z = np.interp(p[2],model.HEAD_HEIGHTS[:,1],model.HEAD_HEIGHTS[:,0])
+        y = min(p[1]/model.HEAD_SCALE.y,front_y(x,z)-.003)
+        brow.append((x,y,z,width,depth))
     sideburn = [
         (.133, -.026, 1.897, .025, .019), (.148, -.055, 1.853, .030, .022),
         (.177, -.089, 1.819, .024, .019), (.180, -.094, 1.781, .021, .016),
@@ -534,8 +575,10 @@ def hair_paths():
         mirror = np.array((sign, 1, 1, 1, 1))
         yield 'Moustache', moustache * mirror
         yield 'Eyebrow', np.array(brow) * mirror
-        yield 'Temple hair', np.array(sideburn) * mirror
-        yield 'Temple curl', np.array(temple_sweep) * mirror
+        for name, profile in (('Temple hair',sideburn),('Temple curl',temple_sweep)):
+            temple = np.array(profile)*mirror
+            temple[:,1] += (.065 if sign>0 else .046)*np.exp(-((temple[:,2]-1.813)/.078)**2)
+            yield name,temple
         yield 'Temple hair', np.array(nape) * mirror
 
 
@@ -555,6 +598,7 @@ def brim_surface(a, t):
     thickness = .052 + (.026 if math.sin(b) > 0 else .013) * front ** 1.6
     thickness += .010 * fall - .013 * right * front
     z = 1.904 + .147 * x + arch + thickness * swell * math.sin(b)
+    z -= .017*max(0,-math.sin(b))**1.4*(.55+max(0,-c))
     return Vector((x, y, z))
 
 
@@ -590,33 +634,31 @@ def build_cap():
         crown = math.exp(-((t-.34)/.21)**2) * max(0, math.sin(a))
         return Vector((x, y-.041*crown, z+.007*crown)) + radius * (math.cos(a) * across + .94 * math.sin(a) * front)
 
-    loft(cap_surface, 56, 64, model.HAT, cap=True, cap_start=False,
+    loft(cap_surface, 48, 56, model.HAT, cap=True, cap_start=False,
          portrait=('Folded velvet', (1024,1024), 'velvet'))
-    loft(brim_surface, 28, 112, model.FUR, loop=True,
+    loft(brim_surface, 24, 96, model.FUR, loop=True,
          portrait=('Fur brim', (1536,512), 'hair'))
 
-    loft(lambda a, t: pompom_surface(a, .0005 + .999*t), 36, 56, model.FUR, cap=True,
+    loft(lambda a, t: pompom_surface(a, .0005 + .999*t), 30, 48, model.FUR, cap=True,
          portrait=('Pompom fibers', (768,512), 'hair'))
 
 
 def build_head():
     def skin_depth(x,z):
-        radius = (x/.056)**2 + ((z-1.715)/.032)**2
-        return min(front_y(x,z), -.218-.060*math.sqrt(1-radius)) if radius<1 else front_y(x,z)
+        radius = (x/.051)**2 + ((z-1.715)/.036)**2
+        return min(front_y(x,z), -.225-.041*math.sqrt(1-radius)) if radius<1 else front_y(x,z)
 
     grid = [[(x, skin_depth(x,z), z) for x in np.linspace(-.2,.2,105)]
             for z in np.linspace(1.512,1.942,113)]
     painted_material(model.FACE, model.FACE, grid, (768,768), 'skin')
-    right_eye, left_eye, lips, right_nostril, left_nostril = build_skull()
-    build_nose()
+    right_eye, left_eye, lips, nose = build_skull()
+    build_nose(nose)
     for sign, socket in ((-1, right_eye), (1, left_eye)):
         build_ear(sign)
         build_eye(sign, socket)
     build_glasses()
     build_smile(lips)
-    build_nostril(right_nostril)
-    build_nostril(left_nostril)
-    loft(beard_surface, 68, 128, model.HAIR, cap=True, cap_start=False,
+    loft(beard_surface, 62, 112, model.HAIR, cap=True, cap_start=False,
          portrait=('Combed beard', (2048,1024), 'beard'))
     for name, path in hair_paths():
         steps, sides = {'Moustache': (44, 20), 'Eyebrow': (30, 15), 'Temple hair': (40, 18),

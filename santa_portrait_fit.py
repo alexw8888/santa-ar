@@ -1,6 +1,7 @@
 """Two-view registration of the head sculpt and its photographic texture samples."""
 import math
 from functools import lru_cache
+from pathlib import Path
 
 import numpy as np
 from mathutils import Quaternion, Vector
@@ -82,6 +83,24 @@ def project(points, view):
     return 260 + focal * local[..., :2] / local[..., 2:]
 
 
+def from_portraits(front, side, clearance=None):
+    """Triangulate a feature from both photographs, then return to pre-fit coordinates."""
+    planes, values = [], []
+    for xy,view in ((front,'front'),(side,'side')):
+        origin,basis,focal = camera_basis(view)
+        for axis,screen in enumerate(xy):
+            plane = basis[axis] - ((screen-260)/focal)*basis[2]
+            planes.append(plane)
+            values.append(plane @ origin)
+    world = np.linalg.lstsq(planes,values,rcond=None)[0]
+    if clearance is not None:
+        world = clearance(world)
+    point = world.copy()
+    for _ in range(10):
+        point += .72*(world-fit(point))
+    return point
+
+
 @lru_cache(None)
 def displacement_map(view, texture=False):
     marks = np.array(TEXTURE_MARKS[view] if texture else (FRONT if view == 'front' else SIDE), dtype=float)
@@ -108,12 +127,60 @@ def offsets(screen, view, texture=False):
 
 
 @lru_cache(None)
+def outline_maps():
+    with np.load(Path(__file__).parent/'assets/textures/santa-head-outline-fit.npz') as maps:
+        return dict(maps)
+
+
+def sample_displacement(points, view, grid):
+    screen = 260+.98*(project(points,view)-260)
+    if view=='front':
+        screen[:,1] += 3.4
+    uv = np.clip(screen * len(grid)/520, 0, len(grid)-1.001)
+    x,y = uv.astype(int).T
+    u,v = (uv-uv.astype(int)).T[:,:,None]
+    return ((1-v)*((1-u)*grid[y,x]+u*grid[y,x+1]) +
+            v*((1-u)*grid[y+1,x]+u*grid[y+1,x+1]))
+
+
+@lru_cache(None)
+def part_maps():
+    with np.load(Path(__file__).parent/'assets/textures/santa-head-part-fit.npz') as maps:
+        return dict(maps)
+
+
+def fit_part(points, name):
+    key = 'Moustache' if name.startswith('Moustache') else name
+    if key+'front' not in part_maps():
+        return points
+    flat = points.reshape(-1,3)
+    shifts = np.column_stack([sample_displacement(flat,v,part_maps()[key+v]) for v in CAMERAS])
+    influence = {'Moustache': .17, 'Pompom fibers': .10, 'Fur brim': .27, 'Folded velvet': .18}[key]
+    return (flat+influence*(shifts @ fit_axes())).reshape(points.shape)
+
+
+@lru_cache(None)
 def fit_axes():
     axes = []
     for view, (_, target, _, _) in CAMERAS.items():
         position, basis, focal = camera_basis(view)
         axes.extend(basis[:2] * focal / np.linalg.norm(target - position))
     return np.linalg.pinv(axes).T
+
+
+@lru_cache(None)
+def face_transform():
+    # A low-order fit preserves smooth eyelids and nasal cartilage. The more flexible
+    # silhouette fit is reserved for the large curls and the folds in the cap.
+    xyz = np.array([[x,y,z] for x in (-.14,0,.14) for y in (-.27,-.15)
+                    for z in (1.58,1.70,1.81)])
+    delta = np.column_stack([offsets(project(xyz,v),v) for v in CAMERAS]) @ fit_axes()
+    return np.linalg.lstsq(np.column_stack((xyz,np.ones(len(xyz)))),delta,rcond=None)[0]
+
+
+def ramp(value):
+    u = np.clip(value,0,1)
+    return u*u*(3-2*u)
 
 
 def fit(points, texture_grid=False):
@@ -134,5 +201,11 @@ def fit(points, texture_grid=False):
         if not texture_grid:
             residuals = np.column_stack([offsets(project(fitted,view),view,texture=True) for view in CAMERAS])
             fitted += .78 * (residuals @ fit_axes())
+            contour = np.column_stack([sample_displacement(fitted,v,outline_maps()[v]) for v in CAMERAS])
+            fitted += .91 * (contour @ fit_axes())
+            face = (ramp((z-1.48)/.092)*ramp((1.892-z)/.058)
+                    *ramp((.238-np.abs(x))/.082)*ramp((.012-y)/.085))
+            gentle = np.column_stack((group,np.ones(len(group)))) @ face_transform()
+            fitted = fitted*(1-face[:,None]) + (group+gentle)*face[:,None]
         result[i:i+len(group)] = fitted
     return result.reshape(original.shape)

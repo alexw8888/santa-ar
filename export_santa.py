@@ -8,7 +8,7 @@ The exports are slimmed for phone downloads; the .blend is never saved, so it ke
   JPEG_QUALITY in both the GLB and the USDZ. Images with real transparency stay PNG.
 It also writes santaNN-android.glb for Scene Viewer (see scene_viewer_glb.py).
 """
-import bpy, os, re, struct, sys
+import bpy, os, re, struct, sys, tempfile
 import numpy as np
 HERE = os.path.dirname(os.path.abspath(__file__))
 # material -> fraction of triangles kept. The beard and fur are on every edition; the rest are
@@ -28,8 +28,10 @@ rig = bpy.data.objects[name + '_Rig']
 mesh = bpy.data.objects[name]
 scene = bpy.context.scene
 scene.frame_set(1)
-out = os.path.join(HERE, 'docs')
-os.makedirs(out, exist_ok=True)
+destination = os.path.join(HERE, 'docs')
+os.makedirs(destination, exist_ok=True)
+staging = tempfile.TemporaryDirectory(prefix=version+'-', dir=destination)
+out = staging.name
 # Fail before writing either file if this Blender build lacks USD support.
 props = bpy.ops.wm.usd_export.get_rna_type().properties.keys()
 
@@ -42,9 +44,9 @@ before = triangles()
 for ob in scene.objects:
     ob.select_set(ob == mesh)
 bpy.context.view_layer.objects.active = mesh
-for material, ratio in DECIMATE.items():
-    slot = next((i for i, m in enumerate(mesh.data.materials) if m and m.name == material), None)
-    if slot is None:
+for slot, material in enumerate(mesh.data.materials):
+    ratio = DECIMATE.get(material.get('head_surface', material.name)) if material else None
+    if ratio is None:
         continue
     bpy.ops.object.mode_set(mode='EDIT')
     bpy.ops.mesh.select_all(action='DESELECT')
@@ -89,7 +91,7 @@ bpy.ops.wm.usd_export(**{k: v for k, v in kwargs.items() if k in props})
 # -------- USDZ repackage. Blender's USD exporter writes every texture as PNG and every
 # UsdPreviewSurface as opaque, so glass and steam come out solid in AR Quick Look. Re-encode the
 # textures as JPEG at the target size, patch the materials' alpha in, and repackage the USDZ.
-import shutil, tempfile, zipfile
+import shutil, zipfile
 from pxr import Sdf, Usd, UsdShade, UsdUtils
 alphas = {}
 for mat in bpy.data.materials:
@@ -178,3 +180,7 @@ for ext in ('glb', '-android.glb', 'usdz'):
     path = os.path.join(out, version + ('' if ext.startswith('-') else '.') + ext)
     assert os.path.getsize(path) > 0
     print('[export]', version, ext, os.path.getsize(path), 'bytes', flush=True)
+
+for filename in (version+'.glb', version+'-android.glb', version+'.usdz'):
+    os.replace(os.path.join(out,filename), os.path.join(destination,filename))
+staging.cleanup()

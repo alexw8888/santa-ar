@@ -12,7 +12,16 @@ import santa_portrait_fit as fit
 @lru_cache(None)
 def reference(view):
     filename = 'head.png' if view == 'front' else 'side.png'
-    im = bpy.data.images.load(str(Path(model.HERE, 'photos', filename)), check_existing=False)
+    rgb = read_pixels(Path(model.HERE, 'photos', filename))
+    gain = read_pixels(Path(model.HERE,'assets','textures',f'santa-head-{view}-diffuse-fit.png'))
+    h,w = rgb.shape[:2]
+    x = np.linspace(0,gain.shape[1]-1,w).astype(int)
+    y = np.linspace(0,gain.shape[0]-1,h).astype(int)
+    return np.clip(rgb*np.exp(1.22*(gain[y[:,None],x]-.5)),0,1)
+
+
+def read_pixels(path):
+    im = bpy.data.images.load(str(path), check_existing=False)
     im.colorspace_settings.name = 'Non-Color'
     w, h = im.size
     pixels = np.empty(w*h*4, dtype=np.float32)
@@ -179,6 +188,18 @@ def painted_material(base, name, grid, size, family):
         source.pixels.foreach_get(colors)
         fallback = model.to_srgb(colors.reshape(h,w,4)[::-1,:,:3])
     rgb = photograph(grid, size, family, fallback)
+    corrections = surface_corrections()
+    if name in corrections:
+        gain = corrections[name]
+        h,w = rgb.shape[:2]
+        yy = np.linspace(0,gain.shape[0]-1,h)
+        xx = np.linspace(0,gain.shape[1]-1,w)
+        y,x = np.minimum(yy.astype(int),gain.shape[0]-2),np.minimum(xx.astype(int),gain.shape[1]-2)
+        u,v = (xx-x)[None,:,None],(yy-y)[:,None,None]
+        gain = ((1-v)*((1-u)*gain[y[:,None],x]+u*gain[y[:,None],x+1])
+                + v*((1-u)*gain[y[:,None]+1,x]+u*gain[y[:,None]+1,x+1]))
+        linear = np.where(rgb<=.04045,rgb/12.92,((rgb+.055)/1.055)**2.4)
+        rgb = model.to_srgb(linear*np.exp((gain-128)/75))
     image = model.image_file(name.replace(' ', '_')+'_color', rgb)
     material = bpy.data.materials[base] if name == base else bpy.data.materials[base].copy()
     material.name = name
@@ -195,3 +216,12 @@ def painted_material(base, name, grid, size, family):
     if name != base:
         model.MATS.append(material)
     return material.name
+
+
+@lru_cache(None)
+def surface_corrections():
+    path = Path(model.HERE,'assets','textures','santa-head-surface-fit.npz')
+    if not path.exists():
+        return {}
+    with np.load(path) as maps:
+        return {name:maps[name].astype(np.float32) for name in maps.files}

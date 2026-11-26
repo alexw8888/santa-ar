@@ -79,7 +79,7 @@ def ensure_secondary_rig(rig, character):
     materials = {'Crimson_velvet': 1, 'Scarlet_hat_velvet': 1, 'Ivory_plush_fur': 2, 'Silver_beard': 4}
     for poly in mesh.polygons:
         mat = mesh.materials[poly.material_index]
-        mask = materials.get(mat.get('head_surface', mat.name), 0)
+        mask = 8 if mat.name == 'Pompom fibers' else materials.get(mat.get('head_surface', mat.name), 0)
         if mask:
             for idx in poly.vertices:
                 flags[idx] |= mask
@@ -105,7 +105,7 @@ def ensure_secondary_rig(rig, character):
                 along = _clamp((-x - .16) / .115)
                 drop = _clamp((2.06 - z) / .27)
                 influence = along * drop ** .65
-            elif flag & 2 and z < 1.78:
+            elif flag & 8:
                 influence = 1.0
             target = 'hat_tip'
         # Coat material is bound to the three torso bones; leg fabric is bound

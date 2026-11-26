@@ -9,7 +9,7 @@ indices in GROUPS. Colours are linear; texture maps are converted to sRGB when w
 """
 import bpy, bmesh, math, os, random
 import numpy as np
-from santa_portrait_fit import fit as fit_portrait
+from santa_portrait_fit import fit as fit_portrait, fit_part
 import zlib, struct
 from mathutils import Vector, Matrix, Quaternion, Euler
 
@@ -742,7 +742,16 @@ def objects(name, scene):
     vertices = [v for v in bm.verts if sum(v[DL].get(g, 0) for g in head_groups) > .99]
     points = np.array([tuple(v.co) for v in vertices]) * np.array(HEAD_SCALE)
     points[:,2] = head_height(points[:,2])
-    for vertex, point in zip(vertices, fit_portrait(points)):
+    fitted = fit_portrait(points)
+    part_indices = {}
+    for i, vertex in enumerate(vertices):
+        if vertex.link_faces:
+            part_name = MATS[vertex.link_faces[0].material_index].name
+            if part_name in ('Fur brim','Pompom fibers','Folded velvet') or part_name.startswith('Moustache '):
+                part_indices.setdefault(part_name,[]).append(i)
+    for part_name,indices in part_indices.items():
+        fitted[indices] = fit_part(fitted[indices],part_name)
+    for vertex, point in zip(vertices, fitted):
         vertex.co = point
     bmesh.ops.recalc_face_normals(bm, faces=list(bm.faces))
     # Open facial surfaces must face the viewer in AR Quick Look, which culls back faces.

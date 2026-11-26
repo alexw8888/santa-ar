@@ -16,7 +16,7 @@ ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT))
 import santa_head as head
 from santa_portrait_fit import CAMERAS
-from santa_model import HEAD_SCALE, head_height, fit_portrait
+from santa_model import HEAD_SCALE, head_height, fit_portrait, fit_part
 
 
 def keep_head(character):
@@ -63,24 +63,44 @@ def fiber_material(name, dark, light):
     links.new(tone.outputs['Color'], variation.inputs[1])
     links.new(roots.outputs['Color'], variation.inputs[2])
     links.new(variation.outputs['Color'], shader.inputs['Color'])
+    local = nodes.new('ShaderNodeAttribute')
+    local.attribute_name = 'Groom color'
+    shade = nodes.new('ShaderNodeMixRGB')
+    shade.inputs[0].default_value = .80
+    links.new(variation.outputs['Color'], shade.inputs[1])
+    links.new(local.outputs['Color'], shade.inputs[2])
+    links.new(shade.outputs['Color'], shader.inputs['Color'])
     shader.inputs['Roughness'].default_value = .31
     shader.inputs['Radial Roughness'].default_value = .36
     links.new(shader.outputs['BSDF'], nodes['Material Output'].inputs['Surface'])
     return material
 
 
-def add_fibers(name, fibers, material, bone='head'):
-    positions, widths = fibers
+def add_fibers(name, fibers, material, bone='head', surface_name='Combed beard'):
+    positions, widths, uv = fibers
     positions = np.asarray(positions, dtype=np.float32)
     positions *= np.asarray(HEAD_SCALE, dtype=np.float32)
     positions[:, :, 2] = head_height(positions[:, :, 2])
     positions[:] = fit_portrait(positions)
+    part = {'Brim groom':'Fur brim', 'Pompom groom':'Pompom fibers',
+            'Moustache groom':'Moustache'}.get(name)
+    if part:
+        positions[:] = fit_part(positions,part)
     radii = np.asarray(widths[:, None] * (.81, 1, .86, .57, .12), dtype=np.float32)
     data = bpy.data.hair_curves.new(name)
     data.add_curves([5] * len(positions))
     data.attributes['position'].data.foreach_set('vector', positions.ravel())
     radius = data.attributes.new('radius', 'FLOAT', 'POINT')
     radius.data.foreach_set('value', radii.ravel())
+    shader = bpy.data.materials[surface_name].node_tree.nodes['Principled BSDF']
+    tex = shader.inputs['Base Color'].links[0].from_node.image
+    w,h = tex.size
+    pixels = np.empty(w*h*4,dtype=np.float32)
+    tex.pixels.foreach_get(pixels)
+    coords = (np.asarray(uv)*(w,h)).astype(int)
+    colors = pixels.reshape(h,w,4)[coords[:,1]%h,coords[:,0]%w].copy()
+    attr = data.attributes.new('Groom color','FLOAT_COLOR','CURVE')
+    attr.data.foreach_set('color',colors.ravel())
     data.materials.append(material)
     obj = bpy.data.objects.new(name, data)
     bpy.context.scene.collection.objects.link(obj)
@@ -128,11 +148,11 @@ def combed_fibers(rng, guides, count, angles, length, lift, roots=(.012, .965)):
 
     rise = rng.uniform(.15, 1, (count, 1)) * lift * (1 + 1.65 * flyaway)
     positions = interpolate(points) + interpolate(normals) * (rise * s ** 1.5 - .00031)[..., None]
-    return positions, rng.uniform(.000038, .000096, count)
+    return positions, rng.uniform(.000038, .000096, count), np.column_stack((a[:,0]/math.tau,t[:,0]))
 
 
 def fur_fibers(rng, surface, count, pompom=False):
-    strands, widths = [], []
+    strands, widths, uv = [], [], []
     for _ in range(count):
         a = rng.uniform(0, math.tau)
         t = math.acos(rng.uniform(-1, 1)) / math.pi if pompom else rng.random()
@@ -157,7 +177,8 @@ def fur_fibers(rng, surface, count, pompom=False):
                           + comb * (length * s * s * .96))
         strands.append(strand)
         widths.append(rng.uniform(.000068, .000193))
-    return strands, np.asarray(widths)
+        uv.append((a/math.tau,t))
+    return strands, np.asarray(widths), uv
 
 
 def groom(draft):
@@ -175,11 +196,15 @@ def groom(draft):
     for part, path in head.hair_paths():
         amount = {'Moustache': 15500, 'Eyebrow': 4600, 'Temple hair': 7200, 'Temple curl': 5200}[part]
         guides = guide_grid(lambda a, t: head.lock_surface(path, a, t), normal_sign=-1)
+        side = 'left' if path[len(path)//2,0]>0 else 'right'
+        region = 'Nape' if part=='Temple hair' and path[len(path)//2,1]>0 else part
         add_fibers(part + ' groom', combed_fibers(
-            rng, guides, int(amount * density), (-.39, math.pi + .39), .30, .0074), white)
-    add_fibers('Brim groom', fur_fibers(fur_rng, head.brim_surface, int(44000 * density)), fur)
+            rng, guides, int(amount * density), (-.39, math.pi + .39), .30, .0074), white,
+            surface_name=region+' '+side)
+    add_fibers('Brim groom', fur_fibers(fur_rng, head.brim_surface, int(65000 * density)), fur,
+               surface_name='Fur brim')
     add_fibers('Pompom groom', fur_fibers(
-        fur_rng, head.pompom_surface, int(14500 * density), True), fur, 'hat_tip')
+        fur_rng, head.pompom_surface, int(23500 * density), True), fur, 'hat_tip','Pompom fibers')
 
 
 def studio(scene):
