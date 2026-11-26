@@ -204,7 +204,8 @@ CHARACTER_MATERIALS = [
     ('IRIS', 'Hazel_eyes', (.053, .025, .010), dict(rough=.31)),
     ('BLACK', 'Pupils', (.006, .003, .002), dict(rough=.2)),
     ('LAUGH', 'Laughing_mouth', (.022, .004, .003), dict(rough=.62)),
-    ('NOSTRIL', 'Nose_recess', (.11, .022, .012), dict(rough=.56)),
+    # Now only the dark lash line along each upper lid.
+    ('NOSTRIL', 'Nose_recess', (.028, .012, .008), dict(rough=.62)),
     ('TEETH', 'Teeth', (.70, .618, .467), dict(rough=.39)),
     ('TONGUE', 'Tongue', (.25, .043, .035), dict(rough=.56)),
     ('LIP', 'Warm_lips', (.55, .17, .13), dict(rough=.43)),
@@ -320,24 +321,38 @@ def character_materials():
     links.new(pores_tex.outputs['Color'], normals.inputs['Color'])
     links.new(normals.outputs['Normal'], skin.inputs['Normal'])
 
-    # The curved eye patch uses angular U and radial V, so individual rays follow the iris.
+    # The curved eye patch uses angular U and radial V (0 at the pupil, 1 at the limbus),
+    # so individual rays follow the iris. The references show a warm reddish-brown iris
+    # with a pupil about a third of its width, amber below where light enters the eye,
+    # and a thin dark limbal ring.
     y, x = np.mgrid[0:256, 0:512].astype(float)
     radial, angle = y / 255, x / 512 * TAU
     rays = (.30 * np.cos(39 * angle + 2.9 * radial)
             + .18 * np.cos(83 * angle - 3.7 * radial)
             + .15 * np.cos(137 * angle + 5.1 * radial))
-    iris = np.array((.039, .019, .008)) * (1 + rays[:, :, None])
-    pupil = np.clip((radial - .62) / .043, 0, 1)
-    edge = np.clip((radial - .89) / .108, 0, 1)
-    dark = edge * .85 + (1 - pupil) * .96
-    iris = iris * (1 - dark[:, :, None]) + np.array((.004, .0027, .0018)) * dark[:, :, None]
+    brown = np.array((.064, .017, .0065))
+    amber = np.array((.15, .052, .014))
+    glow = (np.clip(-np.sin(angle), 0, 1) ** 1.5 * np.exp(-((radial - .62) / .26) ** 2))[:, :, None]
+    collarette = np.exp(-((radial - .46) / .07) ** 2)[:, :, None]
+    iris = (brown * (1 - .55 * glow) + amber * .55 * glow) * (1 + .7 * rays[:, :, None] + .35 * collarette)
+    pupil = np.clip((radial - .34) / .035, 0, 1)
+    edge = np.clip((radial - .80) / .20, 0, 1) ** 1.6
+    dark = np.maximum(edge * .80, 1 - pupil)
+    iris = iris * (1 - dark[:, :, None]) + np.array((.004, .0024, .0016)) * dark[:, :, None]
     eye_image = image_file('Santa_iris', to_srgb(iris))
     eye = bpy.data.materials[IRIS].node_tree
     eye_texture = eye.nodes.new('ShaderNodeTexImage')
     eye_texture.image = eye_image
     iris_shader = eye.nodes['Principled BSDF']
-    iris_shader.inputs['Specular IOR Level'].default_value = .29
+    # A wet, glossy cornea: the studio key shows as a catchlight, as in the references.
+    iris_shader.inputs['Specular IOR Level'].default_value = .12
+    iris_shader.inputs['Roughness'].default_value = .5
+    iris_shader.inputs['Coat Weight'].default_value = .4
+    iris_shader.inputs['Coat Roughness'].default_value = .03
     eye.links.new(eye_texture.outputs['Color'], iris_shader.inputs['Base Color'])
+    sclera = bpy.data.materials[WHITE].node_tree.nodes['Principled BSDF']
+    sclera.inputs['Coat Weight'].default_value = .4
+    sclera.inputs['Coat Roughness'].default_value = .06
 
     # The lip blends into the cheek, with fine creases along the curve of the smile.
     blend = np.linspace(1, 0, 256)[:, None, None]
@@ -418,7 +433,10 @@ def head_height(z):
 
 
 EYE_CENTER = (.067, -.102, 1.774)
-EYE_PIVOTS = {side: Vector(fit_portrait(np.array((sign * EYE_CENTER[0], EYE_CENTER[1], head_height(EYE_CENTER[2]))) * np.array(HEAD_SCALE)))
+# The laughing lids open above the eye's centre line; the eyeball sits this much higher so a
+# level gaze centres the iris in the opening, as in the references.
+EYEBALL_LIFT = .0072
+EYE_PIVOTS = {side: Vector(fit_portrait(np.array((sign * EYE_CENTER[0], EYE_CENTER[1], head_height(EYE_CENTER[2] + EYEBALL_LIFT))) * np.array(HEAD_SCALE)))
               for side, sign in (('L', 1), ('R', -1))}
 for side, pivot in EYE_PIVOTS.items():
     BONES.append((f'eye.{side}', pivot, pivot + Vector((0, -.04, 0)), 'head'))
@@ -434,11 +452,15 @@ def add_bone(name, head, tail, parent):
 
 
 bm = DL = UV = None
+# Head vertices modelled directly in the fitted portrait space (the rigid spectacles),
+# which `objects` must not warp again.
+UNFITTED = set()
 
 
 def new_mesh():
     """Start a new bmesh for the helpers below to build into."""
     global bm, DL, UV
+    UNFITTED.clear()
     bm = bmesh.new()
     DL = bm.verts.layers.deform.verify()
     UV = bm.loops.layers.uv.verify()
@@ -739,7 +761,7 @@ def mirror_left_glove():
 def objects(name, scene):
     """Turn `bm` into the skinned character mesh `name` and its armature `name`_Rig."""
     head_groups = [GROUPS[n] for n in ('head', 'eye.L', 'eye.R')]
-    vertices = [v for v in bm.verts if sum(v[DL].get(g, 0) for g in head_groups) > .99]
+    vertices = [v for v in bm.verts if sum(v[DL].get(g, 0) for g in head_groups) > .99 and v not in UNFITTED]
     points = np.array([tuple(v.co) for v in vertices]) * np.array(HEAD_SCALE)
     points[:,2] = head_height(points[:,2])
     fitted = fit_portrait(points)

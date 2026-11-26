@@ -13,8 +13,24 @@ TAU = math.tau
 SKULL_CENTER = (0, .014, 1.736)
 SKULL_RADII = (.182, .151, .193)
 EYE_SIDES = 64
+# Sine of the iris's angular radius on the eyeball. The references show an iris about
+# 45% as wide as the laughing eye opening, centred in it and cut by both lids.
+IRIS_RADIAL = .40
+CORNEA = .0024
+# One rigid spectacle frame in portrait space: rotated superellipses fitted to the gold rims
+# in head.png and side.png, then a single pose solved for both views (front weighted).
+FRAME_CENTER = (-.01561, -.26467, 1.74543)
+FRAME_ROTATION = (-.12473, .00138, -.0515)  # about X (pitch), Y (roll), Z (yaw)
+LENS_SEPARATION = .10019  # half the distance between the lens centres
+LENS_SIZE = (.05388, .03733)  # half width and half height of each lens
+LENS_EXPONENT = 2.45  # rounded-rectangle superellipse
+LENS_WRAP = .24407  # each lens turned about its upright, outer edge back
 SMILE_SIDES = 80
 MOUTH_CENTER = 1.641
+# The nasal bulb: a dome as deep as it is wide (after the head's widening), on a short
+# wall from the face. The references show a round ball of a nose in both views.
+NOSE_BASE = -.214
+NOSE_DEPTH = .066
 MOUTH_WIDTH = .089
 POMPOM = Vector((-.376, .155, 1.660))
 POMPOM_RADII = Vector((.078, .074, .077))
@@ -127,16 +143,19 @@ def eye_outline(sign, a, outer=False):
     c, s = math.cos(a), math.sin(a)
     if outer:
         return sign * (ex + .055 * c), ez + .005 + .007 * c + (.044 if s >= 0 else .029) * s
+    # A laughing squint: the upper lid arches about a quarter of the eye's width above
+    # the corners and the lower lid curves gently up, so both lids cut the iris.
     if s >= 0:
-        arch = .030 * s ** 1.13 + .0025 * s * c
+        arch = .0225 * s ** 1.13 + .0008 * s * c
     else:
-        arch = -.0047 * s + .0020 * s * c
-    return sign * (ex + .0355 * c), ez + .001 + .0052 * c + arch
+        arch = -.0040 * s + .0020 * s * c
+    return sign * (ex + .0362 * c), ez + .0025 + .0017 * c + arch
 
 
 def smile_outline(a):
     c, s = math.cos(a), math.sin(a)
-    opening = .022 * s ** .92 if s >= 0 else -.039 * (-s) ** .78
+    # The references laugh with a wide, fairly shallow opening under the upper teeth.
+    opening = .022 * s ** .92 if s >= 0 else -.032 * (-s) ** .78
     depth = .011 * max(0, -s) ** .75
     return Vector((MOUTH_WIDTH * c, -.209 + .047 * c * c - depth,
                    MOUTH_CENTER + opening + .020 * c ** 4 + .0014 * c))
@@ -146,7 +165,8 @@ def lip_position(a, t):
     edge = smile_outline(a)
     angle_x, angle_z = math.cos(a), math.sin(a)
     lower = max(0, -angle_z)
-    width = .0050 + .0235 * lower ** .78
+    # A thin, rounded lower lip, as in the references.
+    width = .0050 + .019 * lower ** .78
     x = edge.x + t * width * angle_x
     z = edge.z + t * width * angle_z
     skin = front_y(x, z)
@@ -257,17 +277,18 @@ def build_skull():
 
 def build_eye(sign, attachment):
     ex, ey, ez = model.EYE_CENTER
+    ball_z = ez + model.EYEBALL_LIFT
     bone = 'eye.L' if sign > 0 else 'eye.R'
 
     def eye_y(x, z):
-        span = max(0, 1 - ((x - sign * ex) / .044) ** 2 - ((z - ez) / .041) ** 2)
+        span = max(0, 1 - ((x - sign * ex) / .044) ** 2 - ((z - ball_z) / .041) ** 2)
         return ey - .043 * math.sqrt(span)
 
     def white(a, t):
         x, z = eye_outline(sign, a)
         t *= .999
         x = (1 - t) * x + t * sign * ex
-        z = (1 - t) * z + t * (ez + .007)
+        z = (1 - t) * z + t * (ball_z + .0035)
         return x, eye_y(x, z), z
 
     loft(white, 8, EYE_SIDES, model.WHITE, cap=True)
@@ -299,82 +320,114 @@ def build_eye(sign, attachment):
         x, z = eye_outline(sign, a)
         y = min(eye_y(x,z)-.0011, front_y(x,z)-.0003)
         lashline.append((x, y-.0006, z+.0003))
-        widths.append(.00022 + .00135*math.sin(a)**.7)
+        widths.append(.0002 + .0012*math.sin(a)**.7)
     model.tube(lashline, widths, model.NOSTRIL, sides=6, sub=1)
-    forward = Vector((-.15, -1, .16)).normalized()
+    # The portrait fit tilts the face down about 11 degrees around the eyes, so this rest
+    # gaze ends up level, toward the viewer, as in the references.
+    forward = Vector((-.07, -1, .19)).normalized()
     across = forward.cross(Vector((0, 0, 1))).normalized()
     up = across.cross(forward)
-    center = Vector((sign * ex, ey, ez))
+    center = Vector((sign * ex, ey, ball_z))
 
     def iris(a, t):
-        radial = .588 * (1 - .999 * t)
+        fraction = 1 - .999 * t
+        radial = IRIS_RADIAL * fraction
         direction = forward * math.sqrt(1 - radial ** 2) + radial * (
             math.cos(a) * across + math.sin(a) * up)
-        return center + direction * Vector((.044, .0437, .041))
+        # A shallow corneal dome, steeper than the eyeball, keeps the key light's
+        # catchlight inside the iris; it stays behind the lids as the eye turns.
+        return center + direction * Vector((.044, .0437, .041)) + forward * CORNEA * (1 - fraction ** 2)
 
     loft(iris, 13, 64, model.IRIS, bones=bone)
 
 
 def build_glasses():
-    from mathutils.bvhtree import BVHTree
-    from santa_portrait_fit import CAMERAS, fit, from_portraits
+    """Model rigid gold spectacles directly in the fitted portrait space.
 
+    The pose and lens size come from rotated superellipses fitted to the rims in both
+    reference photographs (front weighted, since the profile places the face lower).
+    Being one rigid, symmetric frame, the rims stay flat rounded rectangles from any
+    angle; the frame is moved toward the viewer only as far as the fitted skin requires.
+    The vertices are registered in model.UNFITTED so the portrait warp leaves them alone.
+    """
+    from mathutils import Euler
+    from mathutils.bvhtree import BVHTree
+    from santa_portrait_fit import fit
+
+    first = len(model.bm.verts)
     faces = [f for f in model.bm.faces if model.MATS[f.material_index].name == model.FACE]
     vertices = list({v for f in faces for v in f.verts})
-    ids = {v:i for i,v in enumerate(vertices)}
-    points = np.array([tuple(v.co) for v in vertices])*np.array(model.HEAD_SCALE)
-    points[:,2] = model.head_height(points[:,2])
+    ids = {v: i for i, v in enumerate(vertices)}
+    points = np.array([tuple(v.co) for v in vertices]) * np.array(model.HEAD_SCALE)
+    points[:, 2] = model.head_height(points[:, 2])
     skin = BVHTree.FromPolygons(fit(points), [[ids[v] for v in f.verts] for f in faces])
 
-    def clear_skin(point):
-        # At the inner edge of the near lens the rounded ala can sit in front of
-        # the wire. Fit that edge to the physical cheek and nose in both views.
-        for view in (('front','side','front') if point[0]<0 else ('front',)):
-            camera = np.array(CAMERAS[view][0])
-            ray = point-camera
-            dist = np.linalg.norm(ray)
-            ray /= dist
-            hit,_,_,depth = skin.ray_cast(Vector(camera),Vector(ray),dist+.0023)
-            if hit is not None:
-                point = np.array(hit)-.0025*ray
-        return point
+    turn = Euler(FRAME_ROTATION, 'XYZ').to_matrix()
+    back = turn @ Vector((0, 1, 0))
+    separation = LENS_SEPARATION
+    width, height = LENS_SIZE
 
-    def rest(front, side, avoid_skin=False):
-        p = from_portraits(front, side, clear_skin if avoid_skin else None)
-        return Vector((p[0]/model.HEAD_SCALE.x, p[1]/model.HEAD_SCALE.y,
-                       np.interp(p[2], model.HEAD_HEIGHTS[:,1], model.HEAD_HEIGHTS[:,0])))
+    def lens(side, a):
+        c, s = math.cos(a), math.sin(a)
+        u = math.copysign(abs(c) ** (2 / LENS_EXPONENT), c) * width
+        v = math.copysign(abs(s) ** (2 / LENS_EXPONENT), s) * height
+        # Each lens turns about its own upright so its outer edge sweeps back around the face.
+        wrap = side * LENS_WRAP
+        return Vector((side * separation + u * math.cos(wrap), u * math.sin(wrap), v))
 
-    inner = []
-    for near in (True, False):
-        def rim(a):
-            c,s = math.cos(a),math.sin(a)
-            oval = (abs(c)**2.45 + abs(s)**2.45)**(-1/2.45)
-            fx = (227-37*c*oval) if near else (342+37*c*oval)
-            fy = (238 if near else 221) - 22.7*s*oval - .16*(fx-(227 if near else 342))
-            sx = (383-10.3*c) if near else (407+5.4*c)
-            sy = (215 if near else 210) - (25.5 if near else 21)*s - 3.5*c
-            return rest((fx,fy),(sx,sy),True)
+    origin = Vector(FRAME_CENTER)
 
-        samples = np.array([tuple(rim(TAU*i/64)) for i in range(64)])
-        # Bend the wire on a continuous oval. Local skin clearance must not leave
-        # kinks at the inner corner of the near lens.
-        angles = np.arange(64)*TAU/64
-        basis = np.column_stack((np.ones(64),np.cos(angles),np.sin(angles),
-                                 np.cos(2*angles),np.sin(2*angles)))
-        points = [Vector(p) for p in basis @ np.linalg.lstsq(basis,samples,rcond=None)[0]]
-        model.tube(points+points[:1], [.00165]*65, model.WIRE, sides=8, sub=1, cap=False)
-        inner.append(rim(math.pi-.45))
-        hinge = rim(.22)
-        model.ellipsoid(hinge,(.0044,.0028,.0037),model.WIRE,seg=14,rings=8)
-        if near:
-            arm = [hinge,rest((178,234),(349,213)),rest((160,228),(278,210)),
-                   rest((149,226),(222,217)),rest((149,233),(202,232))]
-        else:
-            arm = [hinge,(.158,-.130,1.779),(.179,-.061,1.785),(.188,.026,1.774)]
-        model.tube(arm,[.0023]+[.0018]*(len(arm)-2)+[.0013],model.WIRE,sides=8)
-    bridge = np.array([inner[0],rest((274,217),(397,207)),rest((283,215),(401,205)),
-                       rest((295,215),(404,206)),inner[1]])
-    model.tube([sample_path(bridge,i/24) for i in range(25)],[.0018]*25,model.WIRE,sides=8,sub=1)
+    def place(local):
+        return origin + turn @ local
+
+    def depth_in_skin(point, clearance):
+        """How far `point` must move toward the viewer to keep `clearance` from the skin."""
+        hit = skin.ray_cast(point, -back, .06)
+        if hit[0] is not None:
+            return hit[3] + clearance
+        hit = skin.ray_cast(point, back, clearance)
+        return clearance - hit[3] if hit[0] is not None else 0
+
+    rims = [lens(side, TAU * i / 96) for side in (-1, 1) for i in range(96)]
+    push = max(depth_in_skin(place(p), .0028) for p in rims)
+    print(f'[glasses] frame moved {1000 * push:.1f} mm toward the viewer to clear the skin', flush=True)
+    origin -= back * push
+    for side in (-1, 1):
+        rim = [place(lens(side, TAU * i / 96)) for i in range(96)]
+        model.tube(rim + rim[:1], [.0021] * 97, model.WIRE, sides=8, sub=1, cap=False)
+
+    # A bridge arching a little above the inner top corners, set back toward the nose.
+    corner = .70
+    ends = lens(-1, corner), lens(1, math.pi - corner)
+    top = max(e.z for e in ends) + .0085
+    bridge = [ends[0], Vector((-.024, .004, top - .0025)), Vector((0, .006, top)),
+              Vector((.024, .004, top - .0025)), ends[1]]
+    bridge = [place(p) for p in bridge]
+    bridge = [p - back * depth_in_skin(p, .003) for p in bridge]
+    model.tube([Vector(sample_path(np.array(bridge), i / 24)) for i in range(25)], [.0019] * 25,
+               model.WIRE, sides=8, sub=1)
+
+    for side in (-1, 1):
+        # Nose pads rest on the nose behind the inner edge of each lens.
+        pad = place(Vector((side * (separation - .83 * width), 0, .23 * height)))
+        hit = skin.ray_cast(pad, back, .08)
+        pad = hit[0] - back * .0035 if hit[0] is not None else pad + back * .018
+        anchor = place(lens(side, .32 if side < 0 else math.pi - .32))
+        model.tube([anchor, anchor.lerp(pad, .5) + back * .002, pad], [.0012] * 3, model.WIRE, sides=6)
+        model.ellipsoid(pad, (.0030, .0018, .0048), model.WIRE, seg=12, rings=8)
+        # Hinges at the outer corners, and temples running back along the head to the ears.
+        hinge = place(lens(side, math.pi - .38 if side < 0 else .38) + Vector((side * .0035, .002, 0)))
+        model.ellipsoid(hinge, (.0050, .0036, .0042), model.WIRE, seg=14, rings=8)
+        temple = [hinge]
+        for k, y in enumerate((-.19, -.12, -.05, .02)):
+            z = hinge.z - .003 * k
+            hit = skin.ray_cast(Vector((side * .40, y, z)), Vector((-side, 0, 0)), .40)
+            x = hit[0].x + side * .007 if hit[0] is not None else side * .225
+            temple.append(Vector((x, y, z)))
+        temple.append(Vector((temple[-1].x, .07, temple[-1].z - .035)))
+        model.tube(temple, [.0024] + [.0019] * (len(temple) - 2) + [.0014], model.WIRE, sides=8)
+    model.bm.verts.ensure_lookup_table()
+    model.UNFITTED.update(model.bm.verts[i] for i in range(first, len(model.bm.verts)))
 
 
 def build_smile(attachment):
@@ -411,10 +464,11 @@ def build_smile(attachment):
         co.z += .41 * (co.y + .184)
         return co
 
+    # The tongue's top fills the lower part of the opening; its tip stays behind the lower lip.
     def tongue(a,t):
         phi = math.pi*(.0005+.999*t)
         return tongue_shape(Vector((.002+.062*math.cos(a)*math.sin(phi),
-                                    -.190+.042*math.sin(a)*math.sin(phi),1.601+.018*math.cos(phi))))
+                                    -.188+.040*math.sin(a)*math.sin(phi),1.605+.018*math.cos(phi))))
     loft(tongue,24,48,model.TONGUE,cap=True,portrait=(model.TONGUE,(512,256),'tongue'))
 
 
@@ -449,14 +503,14 @@ def build_nose(attachment):
             if t < .38:
                 u = t/.38
                 ease = u*u*(3-2*u)
-                co = vertex.co.lerp(Vector((x, -.224-.006*wing, z)), ease)
+                co = vertex.co.lerp(Vector((x, NOSE_BASE-.006*wing, z)), ease)
                 co.y -= .003*math.sin(math.pi*u)
             else:
                 phi = min((t-.38)/.62,.9999)*math.pi/2
                 radial = math.cos(phi)
                 xx,zz = radial*x, 1.716+radial*(z-1.716)
                 pocket = math.exp(-((abs(xx)-.034)/.011)**2-((zz-1.695)/.0055)**2)
-                co = Vector((xx,-.224-.046*math.sin(phi)-.006*wing*radial+.009*pocket,zz))
+                co = Vector((xx,NOSE_BASE-NOSE_DEPTH*math.sin(phi)-.006*wing*radial+.009*pocket,zz))
             row.append(model.bm.verts.new(co))
         rows.append(row)
     model.uv_face(rows[-1],[model.face_uv(v.co) for v in rows[-1]])
@@ -646,7 +700,7 @@ def build_cap():
 def build_head():
     def skin_depth(x,z):
         radius = (x/.051)**2 + ((z-1.715)/.036)**2
-        return min(front_y(x,z), -.225-.041*math.sqrt(1-radius)) if radius<1 else front_y(x,z)
+        return min(front_y(x,z), NOSE_BASE-NOSE_DEPTH*math.sqrt(1-radius)) if radius<1 else front_y(x,z)
 
     grid = [[(x, skin_depth(x,z), z) for x in np.linspace(-.2,.2,105)]
             for z in np.linspace(1.512,1.942,113)]

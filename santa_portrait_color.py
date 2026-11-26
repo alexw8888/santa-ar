@@ -200,6 +200,10 @@ def painted_material(base, name, grid, size, family):
                 + v*((1-u)*gain[y[:,None]+1,x]+u*gain[y[:,None]+1,x+1]))
         linear = np.where(rgb<=.04045,rgb/12.92,((rgb+.055)/1.055)**2.4)
         rgb = model.to_srgb(linear*np.exp((gain-128)/75))
+    if family == 'skin':
+        rgb = clear_skin(rgb)
+    elif family in ('hair', 'beard'):
+        rgb = clean_white(rgb)
     image = model.image_file(name.replace(' ', '_')+'_color', rgb)
     material = bpy.data.materials[base] if name == base else bpy.data.materials[base].copy()
     material.name = name
@@ -213,9 +217,68 @@ def painted_material(base, name, grid, size, family):
         shader.inputs['Sheen Weight'].default_value = .045
         shader.inputs['Specular IOR Level'].default_value = .17
         tree.nodes['Normal Map'].inputs['Strength'].default_value *= .30
+        if family == 'velvet':
+            # Deep, saturated scarlet as in the references: the photographed pile already
+            # carries its highlights, so a white specular layer only turns it pink.
+            shader.inputs['Sheen Weight'].default_value = 0
+            shader.inputs['Specular IOR Level'].default_value = .06
     if name != base:
         model.MATS.append(material)
     return material.name
+
+
+def rank_filter(values, size, reduce):
+    """Separable square max or min filter."""
+    pad = size // 2
+    for axis in (0, 1):
+        widths = [(pad, pad) if a == axis else (0, 0) for a in range(values.ndim)]
+        padded = np.pad(values, widths, mode='edge')
+        values = reduce(np.lib.stride_tricks.sliding_window_view(padded, size, axis=axis), axis=-1)
+    return values
+
+
+def soften(values, sigma):
+    radius = int(3 * sigma + .5)
+    kernel = np.exp(-.5 * (np.arange(-radius, radius + 1) / sigma) ** 2)
+    kernel /= kernel.sum()
+    for axis in (0, 1):
+        widths = [(radius, radius) if a == axis else (0, 0) for a in range(values.ndim)]
+        padded = np.pad(values, widths, mode='edge')
+        values = sum(k * np.take(padded, range(i, i + values.shape[axis]), axis=axis)
+                     for i, k in enumerate(kernel))
+    return values
+
+
+def clear_skin(rgb):
+    """Remove thin dark marks the photographs leave on the skin chart.
+
+    Spectacle rims, lashes and stray eyebrow hairs land on the skin wherever the sculpt and
+    the photograph disagree by a few pixels, and read as dirty smudges. A grey closing (max
+    then min) removes dark features narrower than its window while keeping the broad rosy
+    colouring; the fine relief comes from the skin's normal map instead.
+    """
+    rgb = np.asarray(rgb, dtype=np.float32)
+    closed = rank_filter(rank_filter(rgb, 15, np.max), 15, np.min)
+    return np.clip(soften(closed, 2.2), 0, 1)
+
+
+def clean_white(rgb, keep=.30):
+    """Keep the photographed strand shading of white hair and fur, without its stains.
+
+    Where a lock or the brim and the photograph disagree, the projection picks up pink
+    skin, the brown of shadowed curls and the charcoal backdrop, and the white hair reads
+    grey-brown. Keep each chart's light and dark pattern and its mean brightness, drop
+    most of its local colour, and lift the backdrop's deep leaks to a soft shadow.
+    """
+    rgb = np.asarray(rgb, dtype=np.float32)
+    weights = np.array((.2126, .7152, .0722), dtype=np.float32)
+    lum = rgb @ weights
+    # Keep the shadowed gaps between curls; lift only the backdrop's near-black leaks.
+    lum = np.clip(lum, .42 * np.median(lum), np.percentile(lum, 99.7))
+    # The references' white hair is a warm cream on average; keep each chart's mean tint.
+    tint = rgb.reshape(-1, 3).mean(0)
+    white = lum[..., None] * tint / (tint @ weights)
+    return np.clip(white * (1 - keep) + rgb * keep, 0, 1)
 
 
 @lru_cache(None)

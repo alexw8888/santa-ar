@@ -194,7 +194,8 @@ def groom(draft):
     add_fibers('Beard roots', combed_fibers(
         rng, beard_guides, int(17000 * density), (-1.16, 1.16), .115, .012, (.002, .18)), white)
     for part, path in head.hair_paths():
-        amount = {'Moustache': 15500, 'Eyebrow': 4600, 'Temple hair': 7200, 'Temple curl': 5200}[part]
+        # The references' brows are dense, fluffy white tufts.
+        amount = {'Moustache': 15500, 'Eyebrow': 15000, 'Temple hair': 7200, 'Temple curl': 5200}[part]
         guides = guide_grid(lambda a, t: head.lock_surface(path, a, t), normal_sign=-1)
         side = 'left' if path[len(path)//2,0]>0 else 'right'
         region = 'Nape' if part=='Temple hair' and path[len(path)//2,1]>0 else part
@@ -214,6 +215,9 @@ def studio(scene):
     ambient = scene.world.node_tree.nodes['Background']
     ambient.inputs['Color'].default_value = (1, .98, .96, 1)
     ambient.inputs['Strength'].default_value = 1.46
+    # The ambient fill stands in for a dark studio's bounce light. Glossy surfaces (the
+    # wet eyes in particular) reflect only the softboxes, as in the reference portraits.
+    scene.world.cycles_visibility.glossy = False
 
     def softbox(name, location, energy, color, size, target=(0, -.10, 1.74)):
         data = bpy.data.lights.new(name, 'AREA')
@@ -222,12 +226,20 @@ def studio(scene):
         scene.collection.objects.link(obj)
         obj.location = location
         obj.rotation_euler = (Vector(target) - obj.location).to_track_quat('-Z', 'Y').to_euler()
+        return obj
 
     softbox('Warm portrait key', (.38, -.95, 2.38), 49, (1, .92, .86), .65)
     softbox('Portrait fill', (-.61, -.78, 1.81), 19, (.94, .96, 1), .82)
     softbox('Blue velvet rim', (-.77, .11, 2.04), 26, (.69, .79, 1), .61)
     softbox('Warm hair rim', (.38, .31, 2.37), 19, (1, .90, .80), .61)
     softbox('Bounce beneath the face', (-.34, -.51, 1.23), 5, (1, .93, .87), .76)
+    # An eye light right of the camera, near eye level, puts the catchlight beside each
+    # pupil as in the references. It is seen only in reflections, so it adds highlights
+    # to the eyes and spectacles without changing how the face is lit.
+    eye_light = softbox('Eye light', (.372, -1.603, 1.76), 60, (1, .97, .93), .45, target=(0, -.13, 1.765))
+    eye_light.visible_diffuse = False
+    eye_light.visible_transmission = False
+    eye_light.visible_volume_scatter = False
 
     bpy.ops.mesh.primitive_plane_add(size=2.8)
     backdrop = bpy.context.object
@@ -260,6 +272,8 @@ def studio(scene):
 def frame_portrait(camera, backdrop, view):
     location, center, roll, lens = CAMERAS[view]
     camera.location = location
+    # The profile photograph is exposed about 10% brighter than the front one.
+    bpy.context.scene.view_settings.exposure = .15 if view == 'side' else 0
     target = Vector(center)
     if view == 'side':
         pivot = Matrix.Translation((0, -.04, 1.75))
