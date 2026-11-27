@@ -8,19 +8,29 @@ import random
 import sys
 from pathlib import Path
 
+import numpy as np
+
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from mathutils import Matrix, Vector, Quaternion  # noqa: E402
 
 import santa_kit as kit  # noqa: E402
 from santa_kit import (TAU, aim_eyes, ball, bound, cord, ellipsoid, frame, hold, label, look,  # noqa: E402
-                       material, place, profile, ramp, recolor, rigid, surface, turn)
+                       material, place, profile, recolor, rigid, rings, surface, textured, turn)
 
-BUN = Vector((0.0, -.50, 1.33))      # rest centre of the cream bun: held low, in front of his chest
+BUN = Vector((0.0, -.50, 1.33))      # rest centre of the doughnut: held low, in front of his chest
 RX, RY, RZ = .15, .135, .13
-TOP = Vector((.55, 0, .835))          # the bite comes off the top of the bun, on the side away from the cream
+TOP = Vector((.55, 0, .835))          # the bite comes off the top of the doughnut, on the side away from the cream
 BITE = .080                           # depth of the bite's floor along TOP
-GRIP = .10                            # each glove wraps the lower side of the bun
+GRIP = .10                            # each glove wraps the lower side of the doughnut
 SACK = Vector((.74, .14, 0))
+# Like the real Mello doughnut (photos/mello.jpg), it is split like a book down its front-left, from
+# the top-left to the underside, and the two halves are opened SPLIT apart around a line of whipped
+# cream. The cut runs pole to pole along AXIS and opens out along CUT; each half's fried face points
+# along +FRY (the right half, which the bite comes off) or -FRY (the left half).
+AXIS = Vector((-.34, 0, .94)).normalized()
+CUT = (Vector((-.62, -.78, 0)) - AXIS * Vector((-.62, -.78, 0)).dot(AXIS)).normalized()
+FRY = AXIS.cross(CUT)
+SPLIT = math.radians(36)
 kit.start(5, 'Mello', 'photos/05 Mello Santa.jpg', [
     ('bun', BUN, BUN + Vector((0, 0, .2)), 'root'),
     ('mello_jaw', Vector((0, -.15, 1.644)), Vector((0, -.15, 1.704)), 'head'),
@@ -29,11 +39,11 @@ kit.start(5, 'Mello', 'photos/05 Mello Santa.jpg', [
 ])
 rig = kit.rig
 
-crust = material('Golden brioche crust', 'C07A34', .5, coat=.25)
-crumb = material('Soft brioche crumb', 'F2D79B', .85)
+crust = material('Sugared doughnut crust', '7A2507', .6)
+crumb = material('Soft brioche crumb', 'F2E2B0', .85)
 cream = material('Whipped cream', 'FFF8EE', .5, sheen=.3)
-sugar = material('Sugar crystals', 'FFFFFF', .2)
-berry = material('Strawberry', 'D6162B', .25, coat=.8)
+berry = material('Strawberry', 'D21C27', .3, coat=.7)
+flesh = material('Strawberry flesh', 'EC6A60', .35, coat=.4)
 seeds = material('Strawberry seeds', 'D9B23F', .4)
 velvet = recolor('Crimson_velvet', 'Mello mustard velvet', 'A6961A', .36)
 rope = material('Jute rope', 'C79A55', .85)
@@ -52,12 +62,26 @@ plush = material('Teddy plush', '8A5A32', .9, sheen=.5)
 button = material('Black button eyes', '120C08', .2)
 
 
-# ---------------------------------------------------------------- cream bun with a bite
-def bun_point(a, lat):
-    s = math.sin(lat)
-    z = RZ * (s if s > -.7 else -.7 - .4 * (-.7 - s))
-    k = 1 + .025 * math.cos(3 * a + .4) * math.cos(lat)
-    return Vector((RX * k * math.cos(lat) * math.cos(a), RY * k * math.cos(lat) * math.sin(a), z))
+# ---------------------------------------------------------------- the Mello doughnut, with a bite
+def direction(b, g):
+    """Unit vector at angle b round AXIS from the cut (towards +FRY) and g along it (+-pi/2 at its ends)."""
+    return math.cos(g) * (math.cos(b) * CUT + math.sin(b) * FRY) + math.sin(g) * AXIS
+
+
+def crust_point(v):
+    """The whole doughnut's surface along unit vector v: plump, flatter underneath, gently lumpy."""
+    r = 1 / math.sqrt((v.x / RX) ** 2 + (v.y / RY) ** 2 + (v.z / RZ) ** 2)
+    r *= 1 + .02 * math.cos(3 * math.atan2(v.y, v.x) + .4) * (1 - v.z * v.z) + .01 * math.sin(4 * v.x + 3 * v.y + 5 * v.z)
+    p = v * r
+    if p.z < -.7 * RZ:
+        p.z = -.7 * RZ - .4 * (-.7 * RZ - p.z)
+    return p
+
+
+def opened(p, b):
+    """Swing point p, at angle b from the cut, with its half: the cut opens SPLIT wide and the
+    swing fades to nothing at the back, where the halves are still joined."""
+    return Matrix.Rotation(SPLIT / 2 * math.cos(b / 2), 3, AXIS) @ p
 
 
 SIDE = TOP.cross(Vector((0, 1, 0))).normalized()   # with UP, spans the floor of the bite
@@ -74,61 +98,215 @@ def bitten(p):
     return p, False
 
 
+def blend(x, stops):
+    """sRGB colours for values x, interpolated between (value, hex) stops."""
+    at = [s for s, _ in stops]
+    rgb = [[int(h[i:i + 2], 16) / 255 for i in (0, 2, 4)] for _, h in stops]
+    return np.stack([np.interp(x, at, [c[k] for c in rgb]) for k in range(3)], axis=-1)
+
+
+def crust_paint(width=2048, seed=5):
+    """The crust's colour on its (round the cut, along the cut) UVs: darkest mid-face, where it fried
+    longest, golden towards the pale ring the cut runs along, mottled, then rolled in granulated sugar."""
+    height = width // 2
+    rnd = np.random.default_rng(seed)
+    b = (np.arange(width) + .5) / width * TAU
+    g = (np.arange(height) + .5) / height * math.pi - math.pi / 2
+    cb, sb, cg, sg = np.cos(b)[None, :], np.sin(b)[None, :], np.cos(g)[:, None], np.sin(g)[:, None]
+    d = [cg * cb * c + cg * sb * f + sg * a for c, f, a in zip(CUT, FRY, AXIS)]
+
+    def noise(scale, count=14):
+        waves, phases = rnd.normal(0, scale, (count, 3)), rnd.uniform(0, TAU, count)
+        return sum(np.sin(k[0] * d[0] + k[1] * d[1] + k[2] * d[2] + p) for k, p in zip(waves, phases)) / math.sqrt(count / 2)
+
+    face = np.abs(cg * sb)                     # 0 on the ring, 1 in the middle of a fried face
+    img = blend(np.clip(face + .05 * noise(4), 0, 1), [(0, 'D0904A'), (.08, 'B4561E'), (.2, '93340C'), (.4, '7A2507'),
+                                                     (.7, '6A1D05'), (1, '6A1D05')])
+    img *= (1 + .05 * noise(5) + .05 * noise(14))[:, :, None]
+    glow = np.clip(.14 * noise(12), 0, None)[:, :, None]   # patches that fried a brighter orange
+    img = img * (1 - glow) + blend(glow[:, :, 0], [(0, 'B8501A'), (1, 'B8501A')]) * glow
+    sugar = np.array([.95, .92, .89])
+    texel = math.pi * .138 / height            # metres per texel along the cut
+    density = np.clip(.6 + .35 * noise(10), .15, 1)         # the sugar clings in patches
+    count = 90000
+    rows = (np.arcsin(rnd.uniform(-1, 1, count)) + math.pi / 2) / math.pi * height
+    for cu, cv, rv, k, e, t, keep in zip(rnd.uniform(0, width, count), rows, rnd.uniform(.0004, .001, count) / texel,
+                                         rnd.uniform(.35, .9, count), rnd.uniform(1, 1.7, count),
+                                         rnd.uniform(0, math.pi, count), rnd.uniform(0, 1, count)):
+        if keep > density[min(int(cv), height - 1), int(cu) % width]:
+            continue
+        squeeze = max(math.cos(g[int(min(cv, height - 1))]), .02)
+        ru = min(rv * e / squeeze, width / 2)
+        jj = np.arange(max(0, int(cv - rv * e - 1)), min(height, int(cv + rv * e + 2)))
+        ii = np.arange(int(cu - ru - 1), int(cu + ru + 2))
+        du = (ii[None, :] + .5 - cu) * np.maximum(np.cos(g[jj]), .02)[:, None]
+        dv = jj[:, None] + .5 - cv
+        x, y = du * math.cos(t) + dv * math.sin(t), dv * math.cos(t) - du * math.sin(t)
+        alpha = (np.clip((1 - ((x / e) ** 2 + y ** 2) / rv ** 2) * 2.5, 0, 1) * k)[:, :, None]
+        cols = ii % width
+        img[jj[:, None], cols[None, :]] = img[jj[:, None], cols[None, :]] * (1 - alpha) + sugar * alpha
+    count = 100000                             # and the fine sugar dust between the crystals
+    jj = np.clip(((np.arcsin(rnd.uniform(-1, 1, count)) + math.pi / 2) / math.pi * height).astype(int), 0, height - 1)
+    ii = rnd.integers(0, width, count)
+    alpha = rnd.uniform(.15, .4, count)[:, None]
+    img[jj, ii] = img[jj, ii] * (1 - alpha) + sugar * alpha
+    return np.clip(img, 0, 1)
+
+
+def crumb_swatch(size=256, seed=7):
+    """Tileable soft brioche crumb: pale, with shadowed air pockets lit along their upper rims."""
+    rnd = np.random.default_rng(seed)
+    y, x = np.mgrid[0:size, 0:size].astype(float)
+    shade = np.ones((size, size))
+    for _ in range(160):
+        cx, cy = rnd.uniform(0, size, 2)
+        r, e = rnd.uniform(2, 8), rnd.uniform(1, 1.8)
+        dx, dy = (x - cx + size / 2) % size - size / 2, (y - cy + size / 2) % size - size / 2
+        dist = np.sqrt((dx / e) ** 2 + dy ** 2) / r
+        shade -= .16 * np.clip(1 - dist, 0, 1) ** .6
+        shade += .06 * np.clip(1 - np.abs(dist - 1.15) * 4, 0, 1) * (dy > 0)
+    shade += .03 * rnd.standard_normal((size, size))
+    return np.clip(np.array([.95, .89, .69])[None, None, :] * shade[:, :, None], 0, 1)
+
+
+# Half a hulled strawberry standing tip up: (height, half-width) up its outline.
+BERRY = [(0, .030), (.005, .036), (.012, .039), (.025, .036), (.042, .028), (.060, .019), (.076, .010), (.090, .002)]
+BERRY_W = .038
+
+
+def berry_width(z):
+    return float(np.interp(z, [h for h, _ in BERRY], [w for _, w in BERRY]))
+
+
+def berry_paint(size=256):
+    """The cut face (UVs span the outline's width and height): a pale core and pale veins fanning out
+    through rosy flesh to a deep red rim with its seeds."""
+    v, u = (np.mgrid[0:size, 0:size] + .5) / size
+    top = BERRY[-1][0]
+    w = np.interp(v * top, [h for h, _ in BERRY], [w for _, w in BERRY])
+    r = np.abs((u - .5) * 2 * BERRY_W) / np.maximum(w, 1e-4)
+    core = r / (.75 + .5 * v)                  # the pith narrows towards the tip
+    img = blend(np.clip(core, 0, 1.3), [(0, 'FBE2D8'), (.25, 'F7C3B6'), (.45, 'F08E80'), (.65, 'E65A4E'), (.85, 'D8312F'),
+                                        (.95, 'C41B22'), (1.3, 'C41B22')])
+    veins = (.5 + .5 * np.cos(TAU * (7 * v - 3 * r))) ** 6 * np.clip((r - .12) * 6, 0, 1) * np.clip((.86 - r) * 6, 0, 1)
+    img += (np.array([.98, .82, .79]) - img) * .3 * veins[:, :, None]
+    for k in range(1, 9):                      # seeds sitting in the rim
+        z = top * (k + .3 * (k % 2)) / 9.5
+        for side in (-1, 1):
+            cu, cv = .5 + side * .93 * berry_width(z) / (2 * BERRY_W), z / top
+            dot = np.clip(1 - np.hypot((u - cu) * size / 2.6, (v - cv) * size / 2.6), 0, 1)[:, :, None]
+            img += (np.array([.89, .75, .35]) - img) * dot
+    return np.clip(img, 0, 1)
+
+
+def piped(path, radius, mat, ridges=10, depth=.04, sides=24):
+    """A rope of cream piped through a star tip along `path`, `radius(t)` thick for t in 0..1."""
+    points = [Vector(p) for p in path]
+    rows, u = [], None
+    for i, p in enumerate(points):
+        axis = (points[min(i + 1, len(points) - 1)] - points[max(0, i - 1)]).normalized()
+        if u is None:
+            u = axis.cross(Vector((0, 0, 1)) if abs(axis.z) < .95 else Vector((1, 0, 0))).normalized()
+        else:
+            u = (u - axis * u.dot(axis)).normalized()   # carried along the rope so it never twists
+        v = axis.cross(u)
+        r = radius(i / (len(points) - 1))
+        rows.append([p + r * (1 + depth * math.cos(ridges * a)) * (u * math.cos(a) + v * math.sin(a))
+                     for a in (TAU * s / sides for s in range(sides))])
+    rings(rows, mat)
+
+
+def strawberry_half():
+    """Half a strawberry along +Z, its glossy skin behind (+Y) and its cut face towards -Y."""
+    n = 12
+    rows = [[(w * math.cos(a), .9 * w * math.sin(a), z) for a in (math.pi * k / n for k in range(n + 1))]
+            for z, w in BERRY]
+    surface([p for row in rows for p in row], [(j * (n + 1) + k, j * (n + 1) + k + 1, (j + 1) * (n + 1) + k + 1,
+                                                (j + 1) * (n + 1) + k)
+                                               for j in range(len(BERRY) - 1) for k in range(n)], berry, rounded=True)
+    cols, top = 10, BERRY[-1][0]
+    points = [(-w + 2 * w * k / cols, 0, z) for z, w in BERRY for k in range(cols + 1)]
+    surface(points, [(j * (cols + 1) + k, j * (cols + 1) + k + 1, (j + 1) * (cols + 1) + k + 1, (j + 1) * (cols + 1) + k)
+                     for j in range(len(BERRY) - 1) for k in range(cols)], flesh,
+            uv=[(x / (2 * BERRY_W) + .5, z / top) for x, _, z in points])
+    for k in range(16):                        # seeds on the skin round the edges of the cut
+        z = .010 + .070 * ((k * .618) % 1)
+        w = berry_width(z) + .0004
+        a = (.25 + .15 * (k % 3)) if k % 2 else math.pi - .25 - .15 * (k % 3)
+        ball(w * math.cos(a), .9 * w * math.sin(a), z, .0015, seeds, 4, 2)
+
+
+textured(crust, crust_paint(), None)    # the crust and the strawberry's cut face are laid out by their own UVs
+textured(crumb, crumb_swatch(), .07)
+textured(flesh, berry_paint(), None)
+N, M = 72, 36                          # crust columns round AXIS (open at the cut) and rows along it
 with bound('bun'), place(*BUN):
-    n, m = 64, 30
-    whole, grid, carved = [], [], []
-    for j in range(m + 1):
-        lat = -math.pi / 2 + math.pi * j / m
-        row = [bun_point(TAU * i / n, lat) for i in range(n)]
+    whole, grid, carved, uv = [], [], [], []
+    for j in range(M + 1):
+        g = -math.pi / 2 + math.pi * j / M
+        row = [opened(crust_point(direction(b, g)), b) for b in (TAU * i / N for i in range(N + 1))]
         whole.append(row)
         row = [bitten(p) for p in row]
         grid.append([p for p, _ in row])
         carved.append([c for _, c in row])
+        uv.extend((i / N, j / M) for i in range(N + 1))
     # Partition the intact shell exactly at the bite rim. Mixed faces belong
     # only to the removable cap, not to an overlapping exterior crust.
     outside, piece = [], []
-    for j in range(m):
-        for i in range(n):
-            quad = [(j, i), (j, (i + 1) % n), (j + 1, (i + 1) % n), (j + 1, i)]
-            polygon = tuple(a * n + b for a, b in quad)
+    for j in range(M):
+        for i in range(N):
+            quad = [(j, i), (j, i + 1), (j + 1, i + 1), (j + 1, i)]
+            polygon = tuple(a * (N + 1) + b for a, b in quad)
             (piece if any(carved[a][b] for a, b in quad) else outside).append(polygon)
-    surface([p for row in whole for p in row], outside, crust, rounded=True)
+    surface([p for row in whole for p in row], outside, crust, rounded=True, uv=uv)
     surface([p for row in grid for p in row], piece, crumb)
     with bound('chunk'):
-        surface([p for row in whole for p in row], piece, crust, rounded=True)
-    # Cream filling shows in the floor of the bite (hidden under the piece until he takes it).
-    with frame(Matrix.Translation(TOP * (BITE - .026)) @ TOP.to_track_quat('Z', 'Y').to_matrix().to_4x4()):
-        ellipsoid(0, 0, 0, .050, .042, .034, cream, 20, 10,
-                  wobble=lambda a, z: 1 + .06 * math.cos(6 * a + 9 * z))
-    # A ridge of cream bursts from a split across the top-left of the bun, with two piped swirls.
-    for k in range(7):
-        t = k / 6
-        ellipsoid(-.120 + .085 * t, -.012 + .02 * t, RZ * (.80 + .12 * math.sin(math.pi * t)), .040, .040,
-                  .034 + .010 * math.sin(math.pi * t), cream, 20, 8,
-                  wobble=lambda a, z, k=k: 1 + .12 * math.cos(7 * a + k))
-    for x, y, z, r in ((-.105, -.030, RZ + .012, .030), (-.060, -.035, RZ + .024, .026)):
-        with place(x, y, z):
-            profile([(-.01, r, r), (.006, r * 1.05, r * 1.05), (.020, r * .75, r * .75), (.034, r * .30, r * .30),
-                     (.044, .002, .002)], cream, n=32,
-                    wobble=lambda a, zz: 1 + .16 * math.cos(8 * a + 18 * zz))
-    # Strawberry, tip up, nestled in the cream with its seeds.
-    with place(-.085, -.005, RZ + .040, tilt=-12, roll=8):
-        profile([(0, .024, .024), (.012, .031, .031), (.030, .029, .029), (.048, .020, .020), (.064, .009, .009),
-                 (.071, .002, .002)], berry, n=24)
-        for k in range(34):
-            z = .022 + .040 * ((k * .618) % 1)
-            a = k * 2.4
-            r = (.031 if z < .03 else .031 - (z - .03) * .55) + .0004
-            ball(r * math.cos(a), r * math.sin(a), z, .0017, seeds, 4, 2)
-    rnd = random.Random(5)
-    for _ in range(280):
-        a, lat = rnd.uniform(0, TAU), math.asin(rnd.uniform(-.2, 1))
-        p = bun_point(a, lat)
-        if p.z > RZ * .6 and -.17 < p.x < 0 and abs(p.y) < .06:
-            continue
-        p = p * 1.004
-        with bound('chunk' if bitten(p)[1] else 'bun'):
-            ball(p.x, p.y, p.z, rnd.uniform(.0022, .0035), sugar, 4, 2)
+        surface([p for row in whole for p in row], piece, crust, rounded=True, uv=uv)
+    # The two cut faces, flat crumb from the spine out to each lip.
+    faces = []
+    for i, flip in ((0, False), (N, True)):
+        rows = [[AXIS * p.dot(AXIS) + (p - AXIS * p.dot(AXIS)) * k / 6 for k in range(7)] for p in (r[i] for r in whole)]
+        polys = [(j * 7 + k, j * 7 + k + 1, (j + 1) * 7 + k + 1, (j + 1) * 7 + k) for j in range(M) for k in range(6)]
+        surface([p for row in rows for p in row], [q[::-1] for q in polys] if flip else polys, crumb)
+        faces += [p for row in rows for p in row]
+    assert not any(bitten(p)[1] for p in faces), 'the bite reaches the cut'
+    # The bite opens into the cream filling: a soft, lumpy pool of cream fills the hollow, deepest in
+    # the middle, leaving a band of crumb round the rim. It stays below the crust of the piece he bites
+    # off, so it is hidden until he takes it.
+    pool = []
+    for j, row in enumerate(grid):
+        for i, p in enumerate(row):
+            deep = (whole[j][i] - p).length              # how far the bite carved this point down
+            ripple = 1 + .25 * math.sin(70 * p.dot(SIDE) + 1) * math.sin(60 * p.dot(UP))
+            pool.append(p + TOP * (.85 * max(0, deep - .01) * ripple - .002))
+    surface(pool, piece, cream, rounded=True)
+    # Whipped cream piped back and forth down the cut, so it bulges out between the lips in stacked
+    # soft folds. It leans on the right half, so the left half's crumb shows beside it, as in the photo.
+    lean = Matrix.Rotation(SPLIT * .2, 3, AXIS)
+    for k in range(17):
+        g = -.7 + 1.85 * k / 16
+        out, across = lean @ direction(0, g), lean @ FRY
+        r = crust_point(direction(0, g)).length
+        gap = .9 * r * math.cos(g) * math.sin(SPLIT / 2)    # half the gap at the fold's middle
+        swing = .18 * gap * (1 if k % 2 else -1)
+        with frame(Matrix.Translation(out * .9 * r + across * swing)
+                   @ Matrix((out, across, out.cross(across))).transposed().to_4x4()):
+            ellipsoid(0, 0, 0, .15 * r * math.cos(g) + .009, gap + .004, .021, cream, 20, 10,
+                      wobble=lambda a, z, k=k: 1 + .05 * math.cos(3 * a + k) + .03 * math.cos(8 * a + 2 * k))
+    # A piped swirl over the top of the cut, crowned with half a strawberry.
+    base = crust_point(direction(0, 1.12)) * .97
+    spin = (Vector((0, 0, 1)) * .55 + direction(0, 1.12) * .45).normalized().to_track_quat('Z', 'Y').to_matrix()
+    with frame(Matrix.Translation(base) @ spin.to_4x4()):
+        turns, steps = 2.4, 72
+        path = [(.046 * (1 - .8 * s) * math.cos(TAU * turns * s), .046 * (1 - .8 * s) * math.sin(TAU * turns * s),
+                 .058 * s) for s in (k / steps for k in range(steps + 1))]
+        end = TAU * turns
+        path += [(.006 * math.cos(end + .6), .006 * math.sin(end + .6), .066), (.002, 0, .072)]
+        piped(path, lambda t: .024 * (1 - .5 * t) * min(1, .45 + t / .1) * (1 if t < .93 else max(.12, (1 - t) / .07)),
+              cream)
+        profile([(0, .046, .046), (.03, .032, .032), (.055, .014, .014), (.066, .002, .002)], cream, n=24)
+    with place(*(base + spin @ Vector((0, -.014, .052))), yaw=-8, tilt=-16):
+        strawberry_half()
 
 # ---------------------------------------------------------------- mustard velvet Mello sack
 rnd = random.Random(55)
