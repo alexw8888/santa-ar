@@ -686,7 +686,8 @@ def character():
     finish([v for ring in rings for v in ring] + [middle], LAUGH, 'head')
     teeth = [mouth_outline(t, .86) + Vector((0, .003, -.004)) for t in [math.pi * (.15 + .7 * k / 12) for k in range(13)]]
     tube(teeth, [.003] + [.0075] * 11 + [.003], TEETH, sides=10, sub=1, flat=.45)
-    ellipsoid((0, MY + .012, MC - .028), (.040, .011, .012), TONGUE, seg=24, rings=12)
+    # The tongue lies low and back in the mouth, so only its top shows above the lower lip.
+    ellipsoid((0, MY + .014, MC - .034), (.036, .011, .012), TONGUE, seg=24, rings=12)
 
     # A full, wide beard: shaped underlay plus layered, wavy, flattened locks.
     beard_z = [1.25, 1.28, 1.35, 1.42, 1.50, 1.57, 1.63, 1.70]
