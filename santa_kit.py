@@ -26,6 +26,9 @@ import santa_motion  # noqa: E402
 ARGS = sys.argv[sys.argv.index('--') + 1:] if '--' in sys.argv else []
 EYES = Vector((0, -.13, 1.79))
 EYE_LIMIT = math.radians(19)
+# Turned further down than this, the iris sinks behind the raised, smiling lower lid and the
+# eyes look rolled back, so no edition turns them lower (relative to the head).
+EYE_DOWN_LIMIT = math.radians(8)
 # The cupped left glove wraps a vertical cylinder (about 5 cm radius) whose axis sits at this offset
 # from the wrist; the right glove is its mirror image. Rotating a hand turns the offset with it.
 GRIP = {'L': Vector((-.16, -.04, 0)), 'R': Vector((.16, -.04, 0))}
@@ -492,13 +495,20 @@ def look(target, extra_nod=0, turn_share=.6, nod_share=.35):
     bpy.context.view_layer.update()
 
 
-def aim_eyes(target):
+def aim_eyes(target, down_limit=EYE_DOWN_LIMIT):
+    """Turn the eyes toward `target`, at most EYE_LIMIT from straight ahead and at most
+    `down_limit` radians below level in the head's frame (keeping the sideways turn)."""
     head = rig.pose.bones['head']
     head_deform = head.matrix @ rig.data.bones['head'].matrix_local.inverted()
     local_target = head_deform.inverted() @ Vector(target)
     for side in ('L', 'R'):
         pivot = rig.data.bones['eye.' + side].head_local
-        twist = Vector((0, -1, 0)).rotation_difference((local_target - pivot).normalized())
+        gaze = (local_target - pivot).normalized()
+        if -gaze.z > math.sin(down_limit):
+            level = Vector((gaze.x, gaze.y, 0))
+            level = level.normalized() if level.length > 1e-6 else Vector((0, -1, 0))
+            gaze = level * math.cos(down_limit) - Vector((0, 0, math.sin(down_limit)))
+        twist = Vector((0, -1, 0)).rotation_difference(gaze)
         if twist.angle > EYE_LIMIT:
             twist = Quaternion(twist.axis, EYE_LIMIT)
         deform = Matrix.Translation(pivot) @ twist.to_matrix().to_4x4() @ Matrix.Translation(-pivot)

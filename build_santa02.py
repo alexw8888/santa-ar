@@ -385,7 +385,7 @@ def pose_at(t):
     rig.pose.bones['head'].rotation_quaternion=(Quaternion((0,1,0),-.055-.12*lift)
         @ Quaternion((1,0,0),.045+.14*lift))
     for side in ('L','R'):
-        rig.pose.bones['eye.'+side].rotation_quaternion=Quaternion((1,0,0),-.06-.11*lift)
+        rig.pose.bones['eye.'+side].rotation_quaternion=Quaternion((1,0,0),-min(.06+.11*lift,kit.EYE_DOWN_LIMIT))
 
 
 kit.bake('Santa02_Grocery_Lift', 121, pose_at,
