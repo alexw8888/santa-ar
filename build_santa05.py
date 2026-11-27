@@ -19,18 +19,22 @@ from santa_kit import (TAU, aim_eyes, ball, bound, cord, ellipsoid, frame, hold,
 
 BUN = Vector((0.0, -.50, 1.33))      # rest centre of the doughnut: held low, in front of his chest
 RX, RY, RZ = .15, .135, .13
-TOP = Vector((.55, 0, .835))          # the bite comes off the top of the doughnut, on the side away from the cream
+TOP = Vector((.55, 0, .835))          # the bite comes off the top of the doughnut, to the right of the swirl
 BITE = .080                           # depth of the bite's floor along TOP
 GRIP = .10                            # each glove wraps the lower side of the doughnut
 SACK = Vector((.74, .14, 0))
-# Like the real Mello doughnut (photos/mello.jpg), it is split like a book down its front-left, from
-# the top-left to the underside, and the two halves are opened SPLIT apart around a line of whipped
-# cream. The cut runs pole to pole along AXIS and opens out along CUT; each half's fried face points
-# along +FRY (the right half, which the bite comes off) or -FRY (the left half).
-AXIS = Vector((-.34, 0, .94)).normalized()
-CUT = (Vector((-.62, -.78, 0)) - AXIS * Vector((-.62, -.78, 0)).dot(AXIS)).normalized()
-FRY = AXIS.cross(CUT)
-SPLIT = math.radians(36)
+# Like the real Mello doughnut (photos/mello.jpg), it is cut clean through into two halves with
+# whipped cream between them. The cut lies in the plane of TOP and SWIRL, so the bite goes through
+# bread, cream and bread. The front half's fried face points along +FRY, the back half's along -FRY.
+# The halves are held SPREAD apart and tipped SPLIT open about a hinge line along AXIS under the
+# bottom, so the cream is thickest towards CUT, at the top-left under the swirl.
+SWIRL = Vector((-.45, -.35, .82)).normalized()     # where the swirl and strawberry sit
+FRY = TOP.cross(SWIRL).normalized()
+CUT = (SWIRL * .75 + TOP.normalized() * .25).normalized()
+AXIS = CUT.cross(FRY)
+HINGE = CUT * -.11
+SPLIT = math.radians(10)
+SPREAD = .016
 kit.start(5, 'Mello', 'photos/05 Mello Santa.jpg', [
     ('bun', BUN, BUN + Vector((0, 0, .2)), 'root'),
     ('mello_jaw', Vector((0, -.15, 1.644)), Vector((0, -.15, 1.704)), 'head'),
@@ -78,10 +82,9 @@ def crust_point(v):
     return p
 
 
-def opened(p, b):
-    """Swing point p, at angle b from the cut, with its half: the cut opens SPLIT wide and the
-    swing fades to nothing at the back, where the halves are still joined."""
-    return Matrix.Rotation(SPLIT / 2 * math.cos(b / 2), 3, AXIS) @ p
+def half(p, side):
+    """Place point p of the whole doughnut on its half: side 1 for the front half, -1 for the back."""
+    return HINGE + Matrix.Rotation(side * SPLIT / 2, 3, AXIS) @ (p - HINGE) + FRY * (side * SPREAD / 2)
 
 
 SIDE = TOP.cross(Vector((0, 1, 0))).normalized()   # with UP, spans the floor of the bite
@@ -89,9 +92,11 @@ UP = SIDE.cross(TOP)
 
 
 def bitten(p):
-    """Carve a scalloped bite down from the top; returns the point and whether it was carved."""
+    """Carve a bite down from the top, scalloped by the teeth and torn a little lumpy; returns the
+    point and whether it was carved."""
     u, v = p.dot(SIDE), p.dot(UP)
-    wall = BITE + .045 * ((u / RX) ** 2 + (v / RY) ** 2) + .006 * abs(math.sin(5 * math.atan2(v, u)))
+    wall = (BITE + .045 * ((u / RX) ** 2 + (v / RY) ** 2) + .012 * abs(math.sin(3.5 * math.atan2(v, u)))
+            + .003 * math.sin(55 * u + 1) * math.sin(48 * v))
     depth = p.dot(TOP)
     if depth > wall:
         return p - TOP * (depth - wall), True
@@ -239,63 +244,104 @@ def strawberry_half():
 textured(crust, crust_paint(), None)    # the crust and the strawberry's cut face are laid out by their own UVs
 textured(crumb, crumb_swatch(), .07)
 textured(flesh, berry_paint(), None)
-N, M = 72, 36                          # crust columns round AXIS (open at the cut) and rows along it
+def crust_uv(p, side):
+    """The crust UVs of point p on a half (side 1 front, -1 back): its angles round and along AXIS."""
+    d = (HINGE + Matrix.Rotation(-side * SPLIT / 2, 3, AXIS) @ (p - FRY * (side * SPREAD / 2) - HINGE)).normalized()
+    b = math.atan2(d.dot(FRY), d.dot(CUT))
+    if side > 0:
+        b = min(max(math.pi if b < -math.pi / 2 else b, 0), math.pi)
+    else:
+        b = min(max(TAU if b % TAU < math.pi / 2 else b % TAU, math.pi), TAU)
+    return b / TAU, (math.asin(max(-1., min(1., d.dot(AXIS)))) + math.pi / 2) / math.pi
+
+
+def bitable(points, polys, mat, floor, uv=None, rounded=True, proud=0., uv_at=None):
+    """Model a surface the bite may cut: faces it reaches become the floor of the bite (in the
+    `floor` material, raised `proud` above it) and, until he takes it, the piece (`chunk`) still
+    covers them as they were. Points moved onto the bite's rim get their UVs from uv_at(point)."""
+    points = [Vector(p) for p in points]
+    cut = [bitten(p) for p in points]
+    piece = [q for q in polys if any(cut[i][1] for i in q)]
+    # Pull the uncut corners of those faces onto the bite's rim, so the crust ends in the bite's
+    # scalloped edge rather than in steps along the faces.
+    rim = {}
+    for q in piece:
+        for keep in (i for i in q if not cut[i][1]):
+            for gone in (i for i in q if cut[i][1]):
+                lo, hi = 0., 1.
+                for _ in range(16):
+                    mid = (lo + hi) / 2
+                    lo, hi = (lo, mid) if bitten(points[keep].lerp(points[gone], mid))[1] else (mid, hi)
+                spot = points[keep].lerp(points[gone], lo)
+                if keep not in rim or (spot - points[keep]).length < (rim[keep] - points[keep]).length:
+                    rim[keep] = spot
+    for i, spot in rim.items():
+        points[i] = spot
+        cut[i] = (spot, False)
+        if uv_at:
+            uv[i] = uv_at(spot)
+    surface(points, [q for q in polys if not any(cut[i][1] for i in q)], mat, rounded, uv=uv)
+    if piece:
+        surface([p + TOP * proud if c else p for p, c in cut], piece, floor, rounded)
+        with bound('chunk'):
+            surface(points, piece, mat, rounded, uv=uv)
+
+
+def outward(points, polys, inside):
+    """Wind polys so they face away from point `inside`."""
+    for q in polys:
+        a, b, c = (Vector(points[i]) for i in q[:3])
+        normal = (b - a).cross(c - a)
+        if normal.length > 1e-9:
+            return polys if normal.dot(a - inside) > 0 else [q[::-1] for q in polys]
+    return polys
+
+
+def grid_faces(rows, cols):
+    return [(j * cols + k, j * cols + k + 1, (j + 1) * cols + k + 1, (j + 1) * cols + k)
+            for j in range(rows - 1) for k in range(cols - 1)]
+
+
+textured(crust, crust_paint(), None)    # the crust and the strawberry's cut face are laid out by their own UVs
+textured(crumb, crumb_swatch(), .07)
+textured(flesh, berry_paint(), None)
+N, M = 72, 36                          # crust columns round AXIS and rows along it, for the whole doughnut
 with bound('bun'), place(*BUN):
-    whole, grid, carved, uv = [], [], [], []
-    for j in range(M + 1):
-        g = -math.pi / 2 + math.pi * j / M
-        row = [opened(crust_point(direction(b, g)), b) for b in (TAU * i / N for i in range(N + 1))]
-        whole.append(row)
-        row = [bitten(p) for p in row]
-        grid.append([p for p, _ in row])
-        carved.append([c for _, c in row])
-        uv.extend((i / N, j / M) for i in range(N + 1))
-    # Partition the intact shell exactly at the bite rim. Mixed faces belong
-    # only to the removable cap, not to an overlapping exterior crust.
-    outside, piece = [], []
-    for j in range(M):
-        for i in range(N):
-            quad = [(j, i), (j, i + 1), (j + 1, i + 1), (j + 1, i)]
-            polygon = tuple(a * (N + 1) + b for a, b in quad)
-            (piece if any(carved[a][b] for a, b in quad) else outside).append(polygon)
-    surface([p for row in whole for p in row], outside, crust, rounded=True, uv=uv)
-    surface([p for row in grid for p in row], piece, crumb)
-    with bound('chunk'):
-        surface([p for row in whole for p in row], piece, crust, rounded=True, uv=uv)
-    # The two cut faces, flat crumb from the spine out to each lip.
-    faces = []
-    for i, flip in ((0, False), (N, True)):
-        rows = [[AXIS * p.dot(AXIS) + (p - AXIS * p.dot(AXIS)) * k / 6 for k in range(7)] for p in (r[i] for r in whole)]
-        polys = [(j * 7 + k, j * 7 + k + 1, (j + 1) * 7 + k + 1, (j + 1) * 7 + k) for j in range(M) for k in range(6)]
-        surface([p for row in rows for p in row], [q[::-1] for q in polys] if flip else polys, crumb)
-        faces += [p for row in rows for p in row]
-    assert not any(bitten(p)[1] for p in faces), 'the bite reaches the cut'
-    # The bite opens into the cream filling: a soft, lumpy pool of cream fills the hollow, deepest in
-    # the middle, leaving a band of crumb round the rim. It stays below the crust of the piece he bites
-    # off, so it is hidden until he takes it.
-    pool = []
-    for j, row in enumerate(grid):
-        for i, p in enumerate(row):
-            deep = (whole[j][i] - p).length              # how far the bite carved this point down
-            ripple = 1 + .25 * math.sin(70 * p.dot(SIDE) + 1) * math.sin(60 * p.dot(UP))
-            pool.append(p + TOP * (.85 * max(0, deep - .01) * ripple - .002))
-    surface(pool, piece, cream, rounded=True)
-    # Whipped cream piped back and forth down the cut, so it bulges out between the lips in stacked
-    # soft folds. It leans on the right half, so the left half's crumb shows beside it, as in the photo.
-    lean = Matrix.Rotation(SPLIT * .2, 3, AXIS)
-    for k in range(17):
-        g = -.7 + 1.85 * k / 16
-        out, across = lean @ direction(0, g), lean @ FRY
-        r = crust_point(direction(0, g)).length
-        gap = .9 * r * math.cos(g) * math.sin(SPLIT / 2)    # half the gap at the fold's middle
-        swing = .18 * gap * (1 if k % 2 else -1)
-        with frame(Matrix.Translation(out * .9 * r + across * swing)
-                   @ Matrix((out, across, out.cross(across))).transposed().to_4x4()):
-            ellipsoid(0, 0, 0, .15 * r * math.cos(g) + .009, gap + .004, .021, cream, 20, 10,
-                      wobble=lambda a, z, k=k: 1 + .05 * math.cos(3 * a + k) + .03 * math.cos(8 * a + 2 * k))
-    # A piped swirl over the top of the cut, crowned with half a strawberry.
-    base = crust_point(direction(0, 1.12)) * .97
-    spin = (Vector((0, 0, 1)) * .55 + direction(0, 1.12) * .45).normalized().to_track_quat('Z', 'Y').to_matrix()
+    whole = []                         # the crust of both halves, before the bite
+    for side, columns in ((1, range(0, N // 2 + 1)), (-1, range(N // 2, N + 1))):
+        rows = [[half(crust_point(direction(TAU * i / N, -math.pi / 2 + math.pi * j / M)), side) for i in columns]
+                for j in range(M + 1)]
+        whole += rows
+        points = [p for row in rows for p in row]
+        middle = half(FRY * side * .06, side)
+        bitable(points, outward(points, grid_faces(M + 1, len(columns)), middle), crust, crumb,
+                uv=[(i / N, j / M) for j in range(M + 1) for i in columns], uv_at=lambda p, s=side: crust_uv(p, s))
+        # Its cut face: flat crumb, in chords across from the rim on the CUT side to the rim behind.
+        chords = [[half(crust_point(direction(0, g)).lerp(crust_point(direction(math.pi, g)), k / 8), side)
+                   for k in range(9)] for g in (-math.pi / 2 + math.pi * j / M for j in range(M + 1))]
+        points = [p for row in chords for p in row]
+        bitable(points, outward(points, grid_faces(M + 1, 9), half(FRY * side * .06, side)), crumb, crumb,
+                rounded=False)
+    # The cream between the halves swells out round the rim, most towards CUT, where it is piped in
+    # soft stacked folds and leans on the front half, leaving a band of the back half's crumb showing.
+    # Where he bites, the bite cuts through it between the two halves' crumb.
+    def bead(a):
+        d = math.cos(a) * CUT + math.sin(a) * AXIS
+        near = max(0., math.cos(a)) ** 1.5
+        return d, near, .003 + .022 * near * (.75 + .5 * math.sin(14 * a) ** 2)
+    ring = []
+    for i in range(241):
+        d, near, swell = bead(TAU * i / 240)
+        rim = crust_point(d)
+        front, back = half(rim, 1), half(rim * (1 - .15 * near), -1)
+        ring.append([front.lerp(back, k / 10) + d * swell * math.sin(math.pi * k / 10) ** .7 for k in range(11)])
+    points = [p for row in ring for p in row]
+    bitable(points, outward(points, grid_faces(241, 11), Vector()), cream, cream, proud=.004)
+    # A piped swirl on the cream at SWIRL, crowned with half a strawberry.
+    d, near, swell = bead(math.atan2(SWIRL.dot(AXIS), SWIRL.dot(CUT)))
+    rim = crust_point(d)
+    base = (half(rim, 1) + half(rim * (1 - .15 * near), -1)) / 2 + d * swell * .4
+    spin = (Vector((0, 0, 1)) * .55 + d * .45).normalized().to_track_quat('Z', 'Y').to_matrix()
     with frame(Matrix.Translation(base) @ spin.to_4x4()):
         turns, steps = 2.4, 72
         path = [(.046 * (1 - .8 * s) * math.cos(TAU * turns * s), .046 * (1 - .8 * s) * math.sin(TAU * turns * s),
