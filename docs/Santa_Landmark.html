@@ -114,16 +114,16 @@
 <body>
   <header>
     <h1>Santa at Landmark on Robson</h1>
-    <p class="edition">Santa 04 &middot; A little lit tree</p>
+    <p class="edition">Santa 04 &middot; A Christmas gift</p>
     <p id="launchHint" role="status">Opening AR on supported phones…</p>
   </header>
 
   <model-viewer
     id="santa04"
-    data-src="santa04.glb?v=landmark-4"
-    data-android-src="santa04-android.glb?v=landmark-4"
-    ios-src="santa04.usdz?v=landmark-4"
-    alt="Santa holds a small lit Christmas tree topped with a glowing Landmark on Robson sign."
+    data-src="santa04.glb?v=landmark-7"
+    data-android-src="santa04-android.glb?v=landmark-7"
+    ios-src="santa04.usdz?v=landmark-7"
+    alt="Santa lifts a red gift box with the Landmark on Robson logo and reaches forward to offer it. Lights flash on the large Christmas tree behind him."
     ar
     ar-modes="webxr scene-viewer quick-look"
     ar-scale="auto"
@@ -131,13 +131,13 @@
     camera-controls
     touch-action="pan-y"
     camera-orbit="-3deg 81deg auto"
-    poster="santa04-poster.webp?v=landmark-4"
+    poster="santa04-poster.webp?v=landmark-7"
     shadow-intensity="1"
     shadow-softness="0.8"
     exposure="1.05"
     environment-image="neutral"
     autoplay
-    animation-name="Santa04_Tree_Glow">
+    animation-name="Santa04_Gift_Presentation">
 
     <button slot="ar-button" class="ar-button">🎅 View in your space</button>
     <div class="ar-prompt">Move your phone slowly to find the floor</div>
@@ -156,7 +156,7 @@
     const btn = document.getElementById('toggleAnim');
     const hint = document.getElementById('launchHint');
     const tapHint = 'If AR doesn’t open automatically, tap “View in your space”.';
-    const animation = 'Santa04_Tree_Glow';
+    const animation = 'Santa04_Gift_Presentation';
 
     // iPhone/iPad open the USDZ in AR Quick Look, which never uses the GLB. Same test as model-viewer.
     const quickLook = (() => {
