@@ -5,6 +5,6 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from edition_checks import check  # noqa: E402
 
-check('santa05', 'Santa05_Cream_Bun_Bite', 193,
+check('santa05', 'Santa05_Cream_Bun_Bite', 241,  # the ten-second loop (FRAMES in build_santa05.py)
       holds=[('hand.L', 'bun'), ('hand.R', 'bun')],
       props=['bun', 'chunk'], translucent=False)

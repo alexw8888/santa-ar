@@ -40,14 +40,19 @@ for frame in range(1, 194):
     assert axis.x > .20 and axis.z > .72, (frame, 'Bouquet should stay outward and above the hand')
     assert front.y < -.80, (frame, 'Open flower arrangement should face the guest')
     heights.append(bouquet.head.z)
+    step = None
     if previous:
-        old_wrist, old_rotation = previous
-        assert (wrist - old_wrist).length < .012, (frame, 'Wrist jumps during the offer')
+        old_wrist, old_rotation, old_step = previous
+        step = wrist - old_wrist
+        # He draws the bouquet back and then lowers it in two quick eased moves (0.8 s each) that
+        # peak near 1.7 cm a frame. A jump is a sudden change of step, not a fast smooth one.
+        assert step.length < .020, (frame, 'Wrist moves too fast during the offer')
+        assert old_step is None or (step - old_step).length < .005, (frame, 'Wrist jumps during the offer')
         angle = rotation.rotation_difference(old_rotation).angle
         assert min(angle, math.tau - angle) < math.radians(3), (frame, 'Bouquet twists abruptly')
-    previous = wrist, rotation
+    previous = wrist, rotation, step
 assert .15 < max(heights) - min(heights) < .28, 'Offer should raise the flowers to the viewer'
-bpy.context.scene.frame_set(97)
+bpy.context.scene.frame_set(135)  # the middle of the held offer (OFFER in build_santa03.py)
 offer = rig.pose.bones['bouquet']
 direction = (offer.matrix @ offer.bone.matrix_local.inverted()).to_3x3() @ Vector((0, 0, 1))
 assert offer.head.y < -.55 and offer.head.z > 1.28, 'Offer should reach forward at chest height'

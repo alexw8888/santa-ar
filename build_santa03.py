@@ -305,6 +305,7 @@ with place(*SACK, yaw=25, scale=1.2):
 
 # ---------------------------------------------------------------- eight-second loop
 FRAMES = 193
+OFFER = round(.70 * (FRAMES - 1)) + 1   # 135: the middle of the held offer (reach fully out at t = .60-.80)
 CAMERA = Vector((-.05, -3.2, 1.55))
 # Elbow direction, forearm direction, flower guide, and wrist bend (degrees), from the low side
 # hold through a lift and forward offer to the viewer. The shoulder and elbow carry the reach;
@@ -409,10 +410,10 @@ kit.bake('Santa03_Offer_Bouquet', FRAMES, pose_at,
          activity=gesture_activity)
 FRONT = ((.12, -5.85, 1.98), (.10, -.03, 1.06), 77, (800, 900))
 kit.finish('santa03', FRONT, [
-    ('front', 97, FRONT),
+    ('front', OFFER, FRONT),
     ('start', 1, FRONT),
     ('mug', 1, ((-.30, -1.45, 1.50), (-.14, -.48, 1.36), 80, (640, 640))),
-    ('bouquet', 97, ((.9, -2.1, 1.75), (.50, -.65, 1.55), 55, (640, 640))),
-    ('grip', 97, ((1.1, .7, 1.7), (.46, -.57, 1.34), 65, (640, 640))),
+    ('bouquet', OFFER, ((.9, -2.1, 1.75), (.50, -.65, 1.55), 55, (640, 640))),
+    ('grip', OFFER, ((1.1, .7, 1.7), (.46, -.57, 1.34), 65, (640, 640))),
     ('sack', 1, ((-1.6, -3.0, 1.4), (-.55, .2, .7), 60, (640, 640))),
 ])
