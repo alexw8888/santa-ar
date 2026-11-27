@@ -590,10 +590,10 @@ def character():
     # Open laughing mouth: a D-shaped opening with lips, upper teeth, tongue and a dark cavity.
     # A broad grin: wider, deeper, with the corners pulled well up into the cheeks.
     MC, MW, MT, MB, MY = 1.644, .066, .011, .044, -.190
-    def mouth_outline(t, inset=1):
+    def mouth_outline(t, inset=1, corner=1):
         s = math.sin(t)
         x = MW * math.cos(t) * inset
-        z = MC + (MT if s > 0 else MB) * s * inset + .022 * math.cos(t) ** 4
+        z = MC + (MT if s > 0 else MB) * s * inset + .022 * corner * math.cos(t) ** 4
         return Vector((x, MY + .020 * (x / MW) ** 2, z))
     ellipsoid((0, -.131, 1.648), (.090, .036, .046), FACE, seg=32, rings=20)
     for sign in (-1, 1):
@@ -606,7 +606,9 @@ def character():
     for s in (1, .75, .5, .25):
         ring = []
         for k in range(48):
-            p = mouth_outline(TAU * k / 48, s)
+            # Lift each narrower ring's corners only as high as the lips are at that width
+            # (corner = s ** 4), or the dark cavity rises above the upper lip beside the philtrum.
+            p = mouth_outline(TAU * k / 48, s, corner=s ** 4)
             ring.append(bm.verts.new(p + Vector((0, .003 + (1 - s) * .016, 0))))
         rings.append(ring)
     middle = bm.verts.new(Vector((0, MY + .022, MC - .010)))
