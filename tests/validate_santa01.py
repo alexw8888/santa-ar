@@ -3,8 +3,13 @@ blender -b --python-exit-code 1 -P tests/validate_santa01.py
 """
 import bpy, json, math, struct, zipfile
 import numpy as np
+import sys
 from pathlib import Path
 from mathutils import Vector
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from edition_checks import check_beard_clearance  # noqa: E402
+
 ROOT = Path(__file__).resolve().parents[1]
 bpy.ops.wm.open_mainfile(filepath=str(ROOT / 'santa01.blend'))
 scene = bpy.context.scene
@@ -31,6 +36,7 @@ assert rig.animation_data.action.name == 'Santa01_Natural_Shoulders_Drink_Cup_Ti
 assert [a.name for a in bpy.data.actions] == [rig.animation_data.action.name], 'Leftover actions'
 assert all(b in rig.data.bones for b in ('coat_hem', 'sleeve_sway.L', 'sleeve_sway.R', 'hat_tip'))
 assert scene.frame_start == 1 and scene.frame_end == 300
+check_beard_clearance(scene, mesh)
 # The dark mouth-interior material is reserved for the kettle spout, never the face.
 head_group=mesh.vertex_groups['head'].index
 mouth_index=next(i for i,m in enumerate(mesh.data.materials) if m.name=='Mouth_interior')

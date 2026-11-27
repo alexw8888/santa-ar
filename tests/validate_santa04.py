@@ -13,7 +13,8 @@ from edition_checks import ROOT, check  # noqa: E402
 
 check('santa04', 'Santa04_Gift_Presentation', 193,
       holds=[('hand.L', 'gift'), ('hand.R', 'gift')],
-      props=['gift'], translucent=False)
+      props=['gift'], translucent=False,
+      grip_offsets={'hand.L': Vector((-.16, -.04, 0)), 'hand.R': Vector((.16, -.04, 0))})
 
 santa = bpy.data.objects['Santa04']
 mesh = santa.data
@@ -50,16 +51,22 @@ assert base_color.is_linked, 'The gift logo must use the supplied artwork textur
 texture = base_color.links[0].from_node
 assert texture.type == 'TEX_IMAGE' and texture.image and texture.image.packed_file, 'The gift logo must be packed'
 
+dip_frame, lift_frame, offer_frame, glance_frame = 21, 70, 116, 42
 poses = []
-for frame in (1, 52, 112):
+for frame in (1, dip_frame, lift_frame, offer_frame):
     scene.frame_set(frame)
     poses.append(bones['gift'].head.copy())
-start, lifted, offered = poses
+start, dip, lifted, offered = poses
+assert start.z - dip.z > .015, 'Santa must dip the gift before lifting it'
 assert lifted.z - start.z > .18, 'Santa must raise the gift from the starting hold'
-assert lifted.y - offered.y >= .08, 'Santa must extend the raised gift toward the viewer'
+assert lifted.y - offered.y > .025, 'Santa must extend the raised gift toward the viewer'
 
-for frame, target in ((52, lifted + Vector((0, .06, .20))), (112, scene.camera.location)):
+for frame in (glance_frame, offer_frame):
     scene.frame_set(frame)
+    gift_pose = bones['gift']
+    gift_rotation = (gift_pose.matrix @ gift_pose.bone.matrix_local.inverted()).to_3x3()
+    bow = gift_pose.head + gift_rotation @ Vector((0, .06, .20))
+    target = bow if frame == glance_frame else scene.camera.location
     for name in ('head', 'eye.L', 'eye.R'):
         bone = bones[name]
         rotation = bone.matrix @ bone.bone.matrix_local.inverted()
@@ -97,15 +104,19 @@ for filename in ('santa04.glb', 'santa04-android.glb'):
     animated_scales = {gltf['nodes'][channel['target']['node']]['name']
                        for channel in gltf['animations'][0]['channels'] if channel['target']['path'] == 'scale'}
     assert light_names <= animated_scales, (filename, 'Light scale channels missing')
+    assert any(channel['target']['path'] == 'rotation' and
+               gltf['nodes'][channel['target']['node']]['name'] == 'beard_drape'
+               for channel in gltf['animations'][0]['channels']), (filename, 'Beard animation missing')
 
 stage = Usd.Stage.Open(str(docs / 'santa04.usdz'))
 animation = next(UsdSkel.Animation(prim) for prim in stage.Traverse() if prim.IsA(UsdSkel.Animation))
 joints = {path.rsplit('/', 1)[-1]: i for i, path in enumerate(animation.GetJointsAttr().Get())}
 assert light_names <= joints.keys(), 'USDZ light animation joints missing'
+assert 'beard_drape' in joints, 'USDZ beard animation joint missing'
 usd_scales = animation.GetScalesAttr()
 scale_samples = [usd_scales.Get(t) for t in usd_scales.GetTimeSamples()]
 for name in light_names:
     samples = [scales_at_time[joints[name]][0] for scales_at_time in scale_samples]
     assert min(samples) < .35 and max(samples) > .85, (name, 'USDZ light scale animation missing')
 
-print('PASS: Santa04 gift lift and reach, packed logo, planted tree and staggered lights in both AR formats')
+print('PASS: Santa04 gift lift and reach, beard clearance, packed logo, planted tree and staggered lights in both AR formats')

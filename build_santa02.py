@@ -13,6 +13,7 @@ import bmesh
 import bpy
 import numpy as np
 from mathutils import Matrix, Quaternion, Vector
+from mathutils.bvhtree import BVHTree
 
 ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT))
@@ -21,7 +22,9 @@ import santa_kit as kit  # noqa: E402
 ARGS = sys.argv[sys.argv.index('--') + 1:] if '--' in sys.argv else []
 PHOTO = 'photos/02 Aisle24 Santa.jpg'
 # Both cupped gloves support the shopping from opposite sides.
-scene, rig, santa = kit.start(2, 'Aisle24', PHOTO, [('groceries', Vector((0, -.41, 1.09)), Vector((0, -.41, 1.27)), 'root')])
+scene, rig, santa = kit.start(2, 'Aisle24', PHOTO, [('groceries', Vector((0, -.41, 1.09)), Vector((0, -.41, 1.27)), 'root'),
+    ('bread_idle', Vector((-.185,-.31,1.22)), Vector((-.185,-.31,1.32)), 'groceries'),
+    ('greens_idle', Vector((-.225,-.325,1.225)), Vector((-.225,-.325,1.325)), 'groceries')])
 
 
 def material(name, hex_color, rough=.54, metal=0):
@@ -286,17 +289,20 @@ def yogurt():
 
 # Rear row gives the bundle its stepped silhouette. The fruit and flour sit
 # forward, where the curled fingers wrap around the outer edges.
-with place(-.185,-.31,1.27,-17):
+binding = 'bread_idle'
+with place(-.185,-.31,1.22,-17,scale=.92):
     baguette()
-with place(-.225,-.325,1.275,-10):
+binding = 'greens_idle'
+with place(-.225,-.325,1.225,-10,scale=.94):
     spinach()
-with place(.092,-.292,1.29,4,scale=1.20):
+binding = 'groceries'
+with place(.070,-.292,1.245,4,scale=1.14):
     packet(teal,'SNACKS')
-with place(.236,-.250,1.32,24,scale=1.24):
+with place(.215,-.270,1.265,19,scale=1.16):
     packet(green,'CHIPS')
-with place(.225,-.363,1.24,13):
+with place(.215,-.363,1.195,10):
     milk()
-fruit(-.105,-.368,1.365,.070,red,True)
+fruit(-.105,-.385,1.325,.070,red,True)
 fruit(-.007,-.335,1.305,.061,red,True)
 for z in (1.077,1.157,1.237):
     for x,y in [(-.238,-.435),(-.155,-.392)]:
@@ -394,7 +400,7 @@ for poly, slot, rounded in zip(shopping.polygons, slots, smooth):
         for loop in poly.loop_indices:
             co = shopping.vertices[shopping.loops[loop].vertex_index].co
             uv.data[loop].uv = (co[a] * weave_tiles_per_meter, co[b] * weave_tiles_per_meter)
-for name in ('groceries','root'):
+for name in ('groceries','bread_idle','greens_idle','root'):
     props.vertex_groups.new(name=name).add([i for i,bone in enumerate(bones) if bone==name],1,'REPLACE')
 bpy.ops.object.select_all(action='DESELECT')
 props.select_set(True)
@@ -403,26 +409,302 @@ bpy.context.view_layer.objects.active=santa
 bpy.ops.object.join()
 
 
-# Both grips and the bundle share one rigid displacement. The elbows solve back to the
-# shoulders, which ride the shared body sway, as he lifts, checks his shopping, and settles again.
-def pose_at(t):
-    lift=(1-math.cos(math.tau*t))*.5
-    delta=Vector((.016*lift,.012*lift,.082*lift))
-    identity=Matrix.Identity(3)
-    kit.rigid('groceries',rig.data.bones['groceries'].head_local+delta,identity)
-    for side,sign in [('L',1),('R',-1)]:
-        wrist=Vector((sign*.322,-.415,1.125))+delta
+def clean_elbow_seams():
+    """Remove only the detached decorative elbow rings from this edition's base mesh.
+
+    The shared model creates each ring with 24 x 5 vertices. Match topology,
+    red fabric, arm-only skin weights and the rest elbow position before deleting.
+    """
+    import bmesh
+    obj = santa
+    bm = bmesh.new()
+    bm.from_mesh(obj.data)
+    layer = bm.verts.layers.deform.active
+    names = {g.index: g.name for g in obj.vertex_groups}
+    visited = set()
+    remove = []
+    count = 0
+    if layer is not None:
+        for seed in bm.verts:
+            if seed in visited:
+                continue
+            stack, component = [seed], []
+            visited.add(seed)
+            while stack:
+                v = stack.pop()
+                component.append(v)
+                for edge in v.link_edges:
+                    other = edge.other_vert(v)
+                    if other not in visited:
+                        visited.add(other)
+                        stack.append(other)
+            if len(component) != 120 or any(len(v.link_edges) != 4 for v in component):
+                continue
+            faces = {f for v in component for f in v.link_faces}
+            if len(faces) != 120 or any(len(f.verts) != 4 or obj.data.materials[f.material_index].name != 'Crimson_velvet' for f in faces):
+                continue
+            owners = {names.get(i) for v in component for i, w in v[layer].items() if w > .001}
+            centre = sum((v.co for v in component), Vector((0, 0, 0))) / len(component)
+            for side in ('L', 'R'):
+                allowed = {n + '.' + side for n in ('upper_arm', 'forearm', 'sleeve_sway')}
+                elbow = rig.data.bones['forearm.' + side].head_local
+                if owners and owners <= allowed and (centre - elbow).length < .055:
+                    remove.extend(component)
+                    count += 1
+                    break
+    if remove:
+        bmesh.ops.delete(bm, geom=remove, context='VERTS')
+        bm.to_mesh(obj.data)
+        obj.data.update()
+    bm.free()
+    print(f'[Santa02] Removed {count} detached elbow seam rings (expected 4).', flush=True)
+
+
+clean_elbow_seams()
+
+
+# Ten-second shopping idle. Original side-grip carry with small asymmetry and secondary motion.
+FRAMES = 241
+kit.santa_motion.BODY_TILT_DEG = 3.0
+kit.santa_motion.CLOTHING_SWAY_DEG = 3.5
+kit.santa_motion.FOOT_ADJUST_DEG = 1.25
+kit.santa_motion.HAT_FOLLOW_DEG = 4.0
+
+
+def ease(t, a, b):
+    u = max(0.0, min(1.0, (t-a)/(b-a)))
+    return u**3 * (10 + u*(-15 + 6*u))
+
+
+def pulse(t, a, b, c, d):
+    return ease(t,a,b)*(1-ease(t,c,d))
+
+
+def activity(t):
+    return pulse(t,.16,.32,.65,.80)
+
+
+def shared_reachable_delta(delta, wrists):
+    # Move the bundle and both wrists together, never clamp hands separately.
+    constraints = []
+    for side, wrist in wrists.items():
+        upper = rig.data.bones['upper_arm.'+side]
+        fore = rig.data.bones['forearm.'+side]
+        constraints.append((kit.attached(upper.name)-wrist,
+                            upper.length+fore.length-.012))
+    delta = delta.copy()
+    for _ in range(100):
+        for anchor, limit in constraints:
+            v = delta-anchor
+            if v.length > limit:
+                delta = anchor+v.normalized()*limit
+        if all((delta-a).length <= r+1e-6 for a,r in constraints):
+            return delta
+    raise RuntimeError('Grocery arm reach constraints do not overlap')
+
+
+def relaxed_reach(side, wrist):
+    # Same two-link geometry as the original reach, with a modest outward elbow bias.
+    upper, fore = (rig.data.bones[n+'.'+side] for n in ('upper_arm','forearm'))
+    shoulder = kit.attached(upper.name)
+    v = wrist - shoulder
+    d = v.length
+    if not abs(upper.length-fore.length)+.001 < d < upper.length+fore.length-.005:
+        kit.reach(side, wrist)
+        return
+    direction = v/d
+    along = (upper.length**2-fore.length**2+d*d)/(2*d)
+    sign = 1 if side == 'L' else -1
+    guide = Vector((1.12*sign, .04, -.60))
+    pole = guide-direction*guide.dot(direction)
+    if pole.length < 1e-6:
         kit.reach(side,wrist)
-        kit.rigid('hand.'+side,wrist,identity)
-    rig.pose.bones['head'].rotation_quaternion=(Quaternion((0,1,0),-.055-.12*lift)
-        @ Quaternion((1,0,0),.045+.14*lift))
+        return
+    elbow = shoulder+direction*along+pole.normalized()*math.sqrt(max(0,upper.length**2-along**2))
+    for bone,a,b in ((upper,shoulder,elbow),(fore,elbow,wrist)):
+        kit.rigid(bone.name,a,(bone.tail_local-bone.head_local).rotation_difference(b-a).to_matrix())
+
+
+def pose_at(t):
+    phase = math.tau*(0.0 if t >= 1 else t)
+    lift = activity(t)
+    prep = pulse(t,.12,.16,.18,.27)
+    glance = pulse(t,.10,.22,.45,.55)
+    scan = pulse(t,.32,.36,.40,.45)
+    nod = pulse(t,.55,.59,.61,.65)
+    breathe = math.sin(2*phase)
+    # Small chest-local pitch layered on the shared planted body sway.
+    chest = rig.pose.bones['chest']
+    axis = chest.bone.matrix_local.to_3x3().inverted() @ Vector((1,0,0))
+    chest.rotation_quaternion = chest.rotation_quaternion @ Quaternion(
+        axis.normalized(), math.radians(-.65 - .7*lift + .35*prep + .45*breathe))
+    bpy.context.view_layer.update()
+    # Preserve the original side grips. Lower the entire carry and use a tiny
+    # roll to make one supporting hand slightly lower than the other.
+    pivot = rig.data.bones['groceries'].head_local.copy()
+    settle = pulse(t,.32,.35,.37,.43)
+    roll = math.radians(1.6 + .5*math.sin(phase) + .5*lift)
+    rotation = Matrix.Rotation(roll,3,'Y')
+    delta = Vector((.008*math.sin(phase), -.008-.006*lift,
+                    -.035+.065*lift-.010*prep+.003*breathe-.003*settle))
+    wrists = {side: pivot+rotation@(Vector((sign*.322,-.415,1.125))-pivot)
+              for side,sign in [('L',1),('R',-1)]}
+    delta = shared_reachable_delta(delta, wrists)
+    kit.rigid('groceries',pivot+delta,rotation)
+    for side,wrist in wrists.items():
+        relaxed_reach(side,wrist+delta)
+        kit.rigid('hand.'+side,wrist+delta,rotation)
+    # Child bones rotate locally around the base of the bread and leaves.
+    # Their motion is small and fades after the lift; all heavier food stays rigid.
+    flutter = pulse(t,.28,.34,.36,.46)*math.sin(8*phase)
+    for name,amount in (('bread_idle',.65),('greens_idle',1.5)):
+        pb = rig.pose.bones[name]
+        pb.rotation_quaternion = Quaternion((1,0,0),math.radians(amount*(.35*math.sin(phase)+flutter)))
+    # Preserve the original head axes/signs; use a deliberate scan and soft nod.
+    rig.pose.bones['head'].rotation_quaternion = (
+        Quaternion((0,1,0), -.035-.095*glance+.065*scan)
+        @ Quaternion((1,0,0), .025+.16*glance+.055*nod))
+    eye_glance = pulse(t,.08,.19,.44,.53)
     for side in ('L','R'):
-        rig.pose.bones['eye.'+side].rotation_quaternion=Quaternion((1,0,0),-min(.06+.11*lift,kit.EYE_DOWN_LIMIT))
+        rig.pose.bones['eye.'+side].rotation_quaternion = Quaternion(
+            (1,0,0),-min(.025+.13*eye_glance,kit.EYE_DOWN_LIMIT))
 
 
-kit.bake('Santa02_Grocery_Lift', 121, pose_at,
-         ['groceries','head','eye.L','eye.R']+[n+'.'+s for s in 'LR' for n in ('upper_arm','forearm','hand')],
-         activity=lambda t: (1-math.cos(math.tau*t))*.5)
+kit.bake('Santa02_Grocery_Lift', FRAMES, pose_at,
+         ['groceries','bread_idle','greens_idle','head','eye.L','eye.R']+[n+'.'+s for s in 'LR' for n in ('upper_arm','forearm','hand')],
+         activity=activity)
+
+
+def tuck_beard(margin=.008, floor=.006, hold=.012, radius=.045, cell=.004):
+    """Tuck the lower beard in behind the shopping, which the photo shows held in front of it.
+
+    On every frame of the loop each draped beard vertex should sit `margin` behind the back of any
+    shopping on its front-to-back line and `floor` in front of the coat. Its depth in front of the
+    coat (at the tightest frame) is scaled by k: 1 keeps the modelled beard, 0 lays it on the coat.
+    k varies smoothly with height and width only, holding its value for `hold` before easing back to
+    1 over `radius`, so each lock keeps its layering and bends in behind the shopping. Where the
+    shopping sinks into the coat there is no room: that beard lies on the coat, or goes back into it
+    far enough not to show in front of the shopping, and is removed where the shopping hides it on
+    every frame."""
+    mesh = santa.data
+    n = len(mesh.vertices)
+    rest = np.empty(n * 3)
+    mesh.vertices.foreach_get('co', rest)
+    rest = rest.reshape(n, 3)
+    names = {g.index: g.name for g in santa.vertex_groups}
+    shop, torso, drape = np.zeros(n, bool), np.zeros(n, bool), np.zeros(n, bool)
+    for v in mesh.vertices:
+        weights = {names[g.group]: g.weight for g in v.groups}
+        shop[v.index] = sum(weights.get(b, 0) for b in ('groceries', 'bread_idle', 'greens_idle')) > .5
+        torso[v.index] = sum(weights.get(b, 0) for b in ('hips', 'spine', 'chest', 'neck')) > .98
+        drape[v.index] = weights.get(kit.BEARD_BONE, 0) > 0
+    beard_slot = mesh.materials.find('Silver_beard')
+    coat_slots = {mesh.materials.find(m) for m in ('Crimson_velvet', 'Ivory_plush_fur')}
+    shop_faces = [tuple(f.vertices) for f in mesh.polygons if shop[list(f.vertices)].all()]
+    coat_faces = [tuple(f.vertices) for f in mesh.polygons
+                  if f.material_index in coat_slots and torso[list(f.vertices)].all()]
+    beard_faces = [tuple(f.vertices) for f in mesh.polygons
+                   if f.material_index == beard_slot and drape[list(f.vertices)].any()]
+    beard = np.array(sorted({i for f in beard_faces for i in f if drape[i]}))
+    slot = np.full(n, -1)
+    slot[beard] = np.arange(len(beard))
+
+    def tree(co, faces):
+        used = sorted({i for f in faces for i in f})
+        index = {i: k for k, i in enumerate(used)}
+        return BVHTree.FromPolygons([Vector(co[i]) for i in used], [[index[i] for i in f] for f in faces])
+
+    # The armature blends the head and the drape linearly, so pushing a vertex back along the rest
+    # pose's +y moves it along the same blend of those bones' +y axes on every frame.
+    bones = ('head', kit.BEARD_BONE)
+    weight = np.zeros((len(beard), len(bones)))
+    for k, i in enumerate(beard):
+        for g in mesh.vertices[i].groups:
+            if names[g.group] in bones:
+                weight[k, bones.index(names[g.group])] = g.weight
+    need = np.full(len(beard), -np.inf)   # push that clears the back of the shopping
+    ahead = np.full(len(beard), -np.inf)  # push that reaches the front of the shopping
+    depth = np.full(len(beard), np.inf)   # room in front of the coat at the tightest frame
+    covered = np.zeros(len(beard), int)
+    posed = np.empty(n * 3)
+    for frame in range(1, FRAMES + 1):
+        scene.frame_set(frame)
+        santa.evaluated_get(bpy.context.evaluated_depsgraph_get()).data.vertices.foreach_get('co', posed)
+        co = posed.reshape(n, 3)
+        shopping, coat = tree(co, shop_faces), tree(co, coat_faces)
+        axes = np.array([(rig.pose.bones[b].matrix @ rig.data.bones[b].matrix_local.inverted()).col[1][:3]
+                         for b in bones])
+        push = weight @ axes
+        rate = np.linalg.norm(push, axis=1)  # distance moved per unit of push
+        push /= rate[:, None]
+        for k, i in enumerate(beard):
+            p, e = Vector(co[i]), Vector(push[k])
+            behind = shopping.ray_cast(p + e, -e, 3)[0]
+            if behind is not None:
+                covered[k] += 1
+                need[k] = max(need[k], ((behind - p).dot(e) + margin) / rate[k])
+                ahead[k] = max(ahead[k], (shopping.ray_cast(p - e, e, 3)[0] - p).dot(e) / rate[k])
+            front = coat.ray_cast(p - e, e, 3)[0]
+            if front is not None:
+                depth[k] = min(depth[k], (front - p).dot(e) / rate[k])
+    scene.frame_set(1)
+    # A face moves back as one piece, so each vertex clears what its neighbours must clear, and is
+    # only removed if the shopping hides all of its faces on every frame.
+    own_need, always = need.copy(), covered == FRAMES
+    hidden = always.copy()
+    for face in beard_faces:
+        ks = slot[[i for i in face if slot[i] >= 0]]
+        need[ks] = np.maximum(need[ks], own_need[ks].max())
+        hidden[ks] &= always[ks].all()
+    room = depth > floor
+    depth = np.where(np.isinf(depth), np.maximum(need, 0) + .1, depth)  # no coat behind: push freely
+    most = depth - floor  # the furthest push that keeps the vertex in front of the coat
+    blocked = (need > 0) & (need > most)
+    remove = blocked & hidden & (ahead > most)
+    k_hi = np.where((need > 0) & room, 1 - need / depth, 1.0)
+    k_lo = np.where(room, floor / depth, 1.0)
+    # Smooth k over height and width: the lowest k within reach, easing back to 1 with distance.
+    x, z = rest[beard, 0], rest[beard, 2]
+    x0, z0 = x.min() - radius - cell, z.min() - radius - cell
+    shape = (int((z.max() + radius - z0) / cell) + 3, int((x.max() + radius - x0) / cell) + 3)
+    target = np.ones(shape)
+    np.minimum.at(target, (((z - z0) / cell).astype(int), ((x - x0) / cell).astype(int)),
+                  np.clip(np.where(blocked, 0, k_hi), 0, 1))
+    field = target.copy()
+    reach = int(radius / cell) + 1
+    for dr in range(-reach, reach + 1):
+        for dc in range(-reach, reach + 1):
+            d = math.hypot(dr, dc) * cell
+            if d >= radius or dr == dc == 0:
+                continue
+            t = max(0.0, (d - hold) / (radius - hold))
+            shifted = np.ones(shape)
+            shifted[max(dr, 0):shape[0] + min(dr, 0), max(dc, 0):shape[1] + min(dc, 0)] = \
+                target[max(-dr, 0):shape[0] + min(-dr, 0), max(-dc, 0):shape[1] + min(-dc, 0)]
+            field = np.minimum(field, shifted + (1 - shifted) * t * t * (3 - 2 * t))
+    fx, fz = (x - x0) / cell - .5, (z - z0) / cell - .5
+    c, r = np.floor(fx).astype(int), np.floor(fz).astype(int)
+    tx, tz = fx - c, fz - r
+    k = (field[r, c] * (1 - tx) * (1 - tz) + field[r, c + 1] * tx * (1 - tz)
+         + field[r + 1, c] * (1 - tx) * tz + field[r + 1, c + 1] * tx * tz)
+    k = np.maximum(np.minimum(k, k_hi), k_lo)
+    push = np.where(room, depth * (1 - k), 0.0)
+    push = np.where(blocked, np.maximum(np.maximum(most, 0), np.minimum(need, ahead + margin)), push)
+    push[remove] = 0
+    rest[beard, 1] += push
+    mesh.vertices.foreach_set('co', rest.ravel())
+    bm = bmesh.new()
+    bm.from_mesh(mesh)
+    bm.verts.ensure_lookup_table()
+    bmesh.ops.delete(bm, geom=[bm.verts[i] for i in beard[remove]], context='VERTS')
+    bm.to_mesh(mesh)
+    bm.free()
+    mesh.update()
+    print(f'[Santa02] Tucked the beard behind the shopping: moved {(push > 0).sum()} vertices '
+          f'({(blocked & ~remove).sum()} onto the coat), removed {remove.sum()} always hidden.', flush=True)
+
+
+tuck_beard()
 cam=scene.camera
 
 
@@ -447,7 +729,7 @@ bpy.ops.wm.save_as_mainfile(filepath=str(ROOT/'santa02.blend'),compress=True)
 if ARGS:
     previews=Path(ARGS[0]).resolve()
     previews.mkdir(exist_ok=True,parents=True)
-    for name,frame in [('front',1),('lift',61),('tote',1)]:
+    for name,frame in [('front',1),('lift',89),('tote',1)]:
         if name=='tote':
             camera((-.97,-2.13,.96),(-.64,0,.37),82,(640,640))
         scene.frame_set(frame)

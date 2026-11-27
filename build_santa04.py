@@ -246,32 +246,117 @@ def pulse(t, a, b, c, d):
 
 
 def phases(t):
-    return pulse(t, .06, .28, .83, .99), pulse(t, .37, .57, .71, .83)
+    return pulse(t, .10, .36, .77, .96), pulse(t, .43, .59, .70, .81)
+
+
+def clean_elbow_seams():
+    """Remove only the detached decorative elbow rings from this edition's base mesh.
+
+    The shared model creates each ring with 24 x 5 vertices. Match topology,
+    red fabric, arm-only skin weights and the rest elbow position before deleting.
+    """
+    import bmesh
+    obj = kit.santa
+    bm = bmesh.new()
+    bm.from_mesh(obj.data)
+    layer = bm.verts.layers.deform.active
+    names = {g.index: g.name for g in obj.vertex_groups}
+    visited = set()
+    remove = []
+    count = 0
+    if layer is not None:
+        for seed in bm.verts:
+            if seed in visited:
+                continue
+            stack, component = [seed], []
+            visited.add(seed)
+            while stack:
+                v = stack.pop()
+                component.append(v)
+                for edge in v.link_edges:
+                    other = edge.other_vert(v)
+                    if other not in visited:
+                        visited.add(other)
+                        stack.append(other)
+            if len(component) != 120 or any(len(v.link_edges) != 4 for v in component):
+                continue
+            faces = {f for v in component for f in v.link_faces}
+            if len(faces) != 120 or any(len(f.verts) != 4 or obj.data.materials[f.material_index].name != 'Crimson_velvet' for f in faces):
+                continue
+            owners = {names.get(i) for v in component for i, w in v[layer].items() if w > .001}
+            centre = sum((v.co for v in component), Vector((0, 0, 0))) / len(component)
+            for side in ('L', 'R'):
+                allowed = {n + '.' + side for n in ('upper_arm', 'forearm', 'sleeve_sway')}
+                elbow = rig.data.bones['forearm.' + side].head_local
+                if owners and owners <= allowed and (centre - elbow).length < .055:
+                    remove.extend(component)
+                    count += 1
+                    break
+    if remove:
+        bmesh.ops.delete(bm, geom=remove, context='VERTS')
+        bm.to_mesh(obj.data)
+        obj.data.update()
+    bm.free()
+    print(f'[Santa04] Removed {count} detached elbow seam rings (expected 4).', flush=True)
+
+
+def hold_gift(side, grip, rotation):
+    """Santa04-only arm solution: relaxed, downward elbows; unchanged gift grip."""
+    wrist = grip - rotation @ kit.GRIP[side]
+    upper, fore = (rig.data.bones[n + '.' + side] for n in ('upper_arm', 'forearm'))
+    shoulder = kit.attached(upper.name)
+    delta = wrist - shoulder
+    dist = delta.length
+    if not abs(upper.length - fore.length) < dist < upper.length + fore.length - .005:
+        raise ValueError(f'Gift wrist outside arm reach: {side}, {dist:.4f}')
+    direction = delta / dist
+    along = (upper.length**2 - fore.length**2 + dist**2) / (2 * dist)
+    sign = 1 if side == 'L' else -1
+    guide = Vector((.95 * sign, -.10, -0.92))
+    pole = guide - direction * guide.dot(direction)
+    if pole.length < 1e-6:
+        guide = Vector((sign, 0, 0))
+        pole = guide - direction * guide.dot(direction)
+    elbow = shoulder + direction * along + pole.normalized() * math.sqrt(max(0, upper.length**2 - along**2))
+    for bone, a, b in ((upper, shoulder, elbow), (fore, elbow, wrist)):
+        rigid(bone.name, a, (bone.tail_local - bone.head_local).rotation_difference(b - a).to_matrix())
+    rigid('hand.' + side, wrist, rotation)
 
 
 def pose_at(t):
     lift, offer = phases(t)
     phase = 0. if t >= 1 else TAU * t
     wave, breathe = math.sin(phase), math.sin(2 * phase)
-    for name, degrees in (('spine', 11.5 - 10.0 * lift + 8.5 * offer),
-                          ('chest', 8.0 - 7.0 * lift + 4.0 * offer + .7 * breathe)):
+    # Anticipate the load, straighten as it rises, then relax on the return.
+    prepare = pulse(t, .025, .10, .12, .25)
+    settle = pulse(t, .78, .86, .93, .99)
+    for name, degrees in (('spine', 3.0 + 3.0 * prepare - 4.0 * lift + 2.0 * offer + 1.2 * settle),
+                          ('chest', 2.0 + 2.0 * prepare - 3.0 * lift + 1.5 * offer + .7 * breathe)):
         pb = rig.pose.bones[name]
         axis = pb.bone.matrix_local.to_3x3().inverted() @ Vector((1, 0, 0))
         pb.rotation_quaternion = pb.rotation_quaternion @ Quaternion(axis.normalized(), math.radians(degrees))
     kit.bpy.context.view_layer.update()
 
-    centre = PIVOT + Vector((.012 * wave, .050 * lift - .125 * offer,
-                             .245 * lift + .026 * offer + .003 * breathe))
-    rotation = turn(1.2 * wave, 'Y') @ turn(3.0 - 5.0 * lift + 4.0 * offer, 'X')
-    grips = {'L': Vector((SPAN, 0, 0)), 'R': Vector((-SPAN, 0, 0))}
+    # Clear upward arc, with a small dip before the lift and no inward pull.
+    # A shared gift transform keeps both gloves attached throughout.
+    centre = PIVOT + Vector((.014 * wave, -.012 * lift - .045 * offer,
+                             -.025 * prepare + .225 * lift + .018 * offer + .005 * breathe))
+    rotation = turn(1.8 * wave, 'Y') @ turn(3.0 + 2.0 * prepare - 6.0 * lift + 4.0 * offer, 'X')
+    # Each glove pivots about its own grip, not about the gift's centre.
+    # Keep the existing cupped gloves and front-corner contact points.
+    grips = {'L': Vector((SPAN + .030, .010, -.014)), 'R': Vector((-(SPAN + .030), .010, -.014))}
+    hand_rotations = {
+        side: rotation @ turn(sign * (10 + 5 * lift + 3 * offer), 'Z')
+        for side, sign in (('L', 1), ('R', -1))
+    }
 
     # Project the gift's shared pivot into each arm's reach before posing the hands.
     constraints = []
     for side, grip in grips.items():
         upper = rig.data.bones['upper_arm.' + side]
         fore = rig.data.bones['forearm.' + side]
-        offset = rotation @ (grip - kit.GRIP[side])
-        constraints.append((kit.attached(upper.name) - offset, upper.length + fore.length - .012))
+        offset = rotation @ grip - hand_rotations[side] @ kit.GRIP[side]
+        constraints.append((kit.attached(upper.name) - offset, upper.length + fore.length - .025))
     for _ in range(100):
         for anchor, max_reach in constraints:
             delta = centre - anchor
@@ -282,13 +367,18 @@ def pose_at(t):
     else:
         raise RuntimeError('Gift grip reach constraints do not overlap')
 
+    # Keep sleeve bones aligned with their forearms instead of adding cuff twist.
+    for side in ('L', 'R'):
+        sleeve = rig.pose.bones.get('sleeve_sway.' + side)
+        if sleeve is not None:
+            sleeve.rotation_quaternion = Quaternion((1, 0, 0, 0))
     rigid('gift', centre, rotation)
     for side, grip in grips.items():
-        hold(side, centre + rotation @ grip, rotation)
+        hold_gift(side, centre + rotation @ grip, hand_rotations[side])
 
     # Eyes lead the head back to the viewer just before the arms extend.
-    gift_head = 1 - pulse(t, .26, .37, .81, .95)
-    gift_eyes = 1 - pulse(t, .24, .34, .79, .92)
+    gift_head = pulse(t, .04, .19, .30, .43) + .30 * pulse(t, .79, .87, .91, .99)
+    gift_eyes = pulse(t, .02, .16, .28, .40) + .30 * pulse(t, .77, .85, .90, .98)
     neck = rig.pose.bones['neck']
     neck_deform = neck.matrix @ neck.bone.matrix_local.inverted()
     eye_origin = neck_deform @ kit.EYES
@@ -296,7 +386,7 @@ def pose_at(t):
     gift_ray, viewer_ray = bow - eye_origin, CAMERA - eye_origin
     gift_direction, viewer_direction = gift_ray.normalized(), viewer_ray.normalized()
     head_direction = viewer_direction.lerp(gift_direction, gift_head)
-    nod_share = .50 + .33 * lift
+    nod_share = .43 + .27 * lift
     look(kit.EYES + neck_deform.to_3x3().inverted() @ head_direction, turn_share=.82, nod_share=nod_share)
     eye_direction = viewer_direction.lerp(gift_direction, gift_eyes).normalized()
     eye_distance = viewer_ray.length * (1 - gift_eyes) + gift_ray.length * gift_eyes
@@ -310,6 +400,7 @@ def pose_at(t):
         rig.pose.bones[name].scale = (size,) * 3
 
 
+clean_elbow_seams()
 kit.attach('Landmark on Robson props')
 kit.bake('Santa04_Gift_Presentation', FRAMES, pose_at,
          ['gift', 'head', 'eye.L', 'eye.R'] +
@@ -319,7 +410,7 @@ kit.bake('Santa04_Gift_Presentation', FRAMES, pose_at,
 FRONT = (CAMERA, (-.38, .12, 1.14), 70, (800, 900))
 kit.finish('santa04', FRONT, [
     ('start', 1, FRONT),
-    ('lift', 52, FRONT),
+    ('lift', 70, FRONT),
     ('front', 112, FRONT),
     ('tree', 112, ((-2.25, -5.25, 1.70), (-.85, .47, 1.21), 70, (700, 850))),
     ('gift', 112, ((-.08, -2.48, 1.59), (-.02, -.63, 1.37), 84, (800, 550))),

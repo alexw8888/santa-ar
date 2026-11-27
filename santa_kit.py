@@ -32,6 +32,7 @@ EYE_DOWN_LIMIT = math.radians(8)
 # The cupped left glove wraps a vertical cylinder (about 5 cm radius) whose axis sits at this offset
 # from the wrist; the right glove is its mirror image. Rotating a hand turns the offset with it.
 GRIP = {'L': Vector((-.16, -.04, 0)), 'R': Vector((.16, -.04, 0))}
+BEARD_BONE = 'beard_drape'
 TAU = math.tau
 
 scene = rig = santa = None
@@ -58,7 +59,9 @@ def start(number, scene_name, photo, prop_bones):
         bone.matrix_basis = Matrix.Identity(4)
     bpy.context.view_layer.objects.active = rig
     bpy.ops.object.mode_set(mode='EDIT')
-    for name, head, tail, parent in prop_bones:
+    beard_pivot = rig.data.edit_bones['head'].head.copy()
+    beard = (BEARD_BONE, beard_pivot, beard_pivot - Vector((0, 0, .22)), 'head')
+    for name, head, tail, parent in (*prop_bones, beard):
         bone = rig.data.edit_bones.new(name)
         bone.head, bone.tail = head, tail
         bone.parent = rig.data.edit_bones[parent]
@@ -524,19 +527,50 @@ def action_fcurves(obj):
     return action_get_channelbag_for_slot(action, obj.animation_data.action_slot).fcurves
 
 
+def bind_beard_drape():
+    """Transfer the lower beard's head weight to the drape, feathering into the roots."""
+    mesh = santa.data
+    beard_slot = mesh.materials.find('Silver_beard')
+    beard_vertices = {i for face in mesh.polygons if face.material_index == beard_slot for i in face.vertices}
+    head = santa.vertex_groups['head']
+    drape = santa.vertex_groups.new(name=BEARD_BONE)
+    for i in beard_vertices:
+        vertex = mesh.vertices[i]
+        height = max(0.0, min(1.0, (vertex.co.z - 1.44) / .17))
+        spread = 1 - height**3 * (10 + height * (-15 + 6 * height))
+        head_weight = next((g.weight for g in vertex.groups if g.group == head.index), 0.0)
+        weight = head_weight * spread
+        if weight > 0:
+            drape.add([i], weight, 'REPLACE')
+            head.add([i], head_weight - weight, 'REPLACE')
+
+
+def pose_beard_drape():
+    """Let the beard hang over the coat while following the chin's drop and the head's turn."""
+    head = rig.pose.bones['head']
+    head_rotation = (head.matrix @ head.bone.matrix_local.inverted()).to_3x3()
+    head_pitch = math.degrees(head.rotation_quaternion.to_euler().x)
+    drape_rotation = head_rotation @ turn(-head_pitch - 4, 'X')
+    chin_drop = .18 * math.sin(math.radians(head_pitch + 4))
+    drape_offset = Vector((0, -.033 - .4 * chin_drop, -chin_drop))
+    rigid(BEARD_BONE, head.head + drape_rotation @ drape_offset, drape_rotation)
+
+
 def bake(action_name, frames, pose_at, animated, sway=True, activity=None):
     """Key `animated` bones on every frame; `pose_at(t)` receives the loop phase t in [0, 1].
 
     With `sway`, each frame first gets the shared secondary motion (body sway, coat, sleeves, hat
     tip, feet) at the same phase, scaled up a little by `activity(t)` (0..1) during big gestures;
     `pose_at` then solves the arms from the swaying shoulders, so held props stay put in the gloves.
+    The beard drape is posed after the edition finishes moving the head.
     """
     scene.frame_start, scene.frame_end = 1, frames
     scene.render.fps = 24
+    bind_beard_drape()
     armature = santa.modifiers.get('Armature')
     armature.show_viewport = False
-    if sway:
-        animated = list(dict.fromkeys(list(animated) + list(santa_motion.ANIMATED_BONES)))
+    shared_bones = santa_motion.ANIMATED_BONES if sway else ()
+    animated = tuple(dict.fromkeys((*animated, BEARD_BONE, *shared_bones)))
     for f in range(1, frames + 1):
         scene.frame_set(f)
         for bone in rig.pose.bones:
@@ -546,6 +580,7 @@ def bake(action_name, frames, pose_at, animated, sway=True, activity=None):
             santa_motion.sway(rig, t, activity(t) if activity else 0)
             bpy.context.view_layer.update()
         pose_at(t)
+        pose_beard_drape()
         for name in animated:
             bone = rig.pose.bones[name]
             for path in ('location', 'rotation_quaternion', 'scale'):
