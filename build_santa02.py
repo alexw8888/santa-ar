@@ -37,8 +37,8 @@ def material(name, hex_color, rough=.54, metal=0):
     return mat
 
 
-canvas = material('Honey woven canvas', 'BC9465', .96)
-seam = material('Canvas binding', '97704A', .89)
+canvas = material('Cream woven canvas', 'E9D7B7', .96)
+seam = material('Canvas binding', 'C8B18F', .89)
 navy = material('Midnight blue ink', '163B51')
 blue = material('Aisle blue', '168DCA')
 white = material('Warm white print', 'FFF7E5')
@@ -71,14 +71,38 @@ y, x = np.mgrid[:128, :128]
 warp, weft = np.cos(x * math.tau / 8), np.cos(y * math.tau / 8)
 over = ((x // 8 + y // 8) % 2).astype(bool)
 fiber = .88 + .10 * np.where(over, warp, weft) + .025 * np.random.default_rng(24).normal(size=x.shape)
-pixels = np.ones((128, 128, 4), dtype=np.float32)
-pixels[:, :, :3] = fiber[:, :, None] * np.array([.75, .59, .40])
-swatch = bpy.data.images.new('Aisle24 canvas weave', width=128, height=128, alpha=False)
-swatch.pixels.foreach_set(pixels.ravel())
-swatch.pack()
+canvas_rgb = np.clip(fiber[:, :, None] * np.array([.95, .87, .72]), 0, 1).astype(np.float32)
 texture = canvas.node_tree.nodes.new('ShaderNodeTexImage')
-texture.image = swatch
+texture.image = kit.image('Aisle24 canvas weave', canvas_rgb)
 canvas.node_tree.links.new(texture.outputs['Color'], canvas.node_tree.nodes['Principled BSDF'].inputs['Base Color'])
+
+# Bake the artwork into the same weave so the canvas shows through the JPEG's white background.
+# The front UVs cover 12 whole weave repeats, starting at tile (-21, 0) in world X/Z.
+weave_repeats = 12
+weave_tiles_per_meter = 24
+front_start_tile = -21
+front_rgb = np.tile(canvas_rgb, (weave_repeats, weave_repeats, 1))
+source = bpy.data.images.load(str(ROOT / 'photos' / 'aisle24.jpg'))
+source_width, source_height = source.size[:]
+pixels = np.empty(source_height * source_width * 4, dtype=np.float32)
+source.pixels.foreach_get(pixels)
+bpy.data.images.remove(source)
+# Crop the surrounding white margin before sizing the wordmark. Blender counts rows from the bottom.
+logo_rgb = pixels.reshape(source_height, source_width, 4)[326:632, 207:962, :3]
+crop_height, crop_width = logo_rgb.shape[:2]
+logo_width = 1120
+logo_height = round(logo_width * crop_height / crop_width)
+rows = np.linspace(0, crop_height - 1, logo_height).round().astype(int)
+columns = np.linspace(0, crop_width - 1, logo_width).round().astype(int)
+logo_rgb = logo_rgb[rows[:, None], columns]
+coverage = np.clip((.98 - logo_rgb.min(axis=2, keepdims=True)) / .60, 0, 1)
+left = (front_rgb.shape[1] - logo_width) // 2
+bottom = round(.208 * weave_tiles_per_meter * canvas_rgb.shape[0] - logo_height / 2)
+print_area = front_rgb[bottom:bottom + logo_height, left:left + logo_width]
+print_area[:] = print_area * (1 - coverage) + logo_rgb * coverage
+front_canvas = canvas.copy()
+front_canvas.name = 'Aisle24 printed canvas'
+front_canvas.node_tree.nodes[texture.name].image = kit.image('Aisle24 Market print', front_rgb)
 
 # Assemble the shopping as two rigid vertex groups on the character mesh.
 verts, faces, slots, smooth, materials, bones = [], [], [], [], [], []
@@ -303,7 +327,9 @@ with place(-.041,-.477,1.055):
 binding = 'root'
 with place(-.635,.008,.009,yaw=8):
     levels = [(0,.183,.083),(.018,.209,.099),(.28,.223,.106),(.454,.230,.114)]
+    shell_start = len(faces)
     profile(levels,canvas,.24,48,close=False)
+    tote_shell = range(shell_start, len(faces))
     profile([(.450,.230,.114),(.459,.231,.115),(.462,.224,.108),(.426,.221,.106)],seam,.24,48,close=False)
     profile([(.017,.201,.092),(.023,.202,.093)],seam,.24)
     for side in (-1,1):
@@ -317,8 +343,6 @@ with place(-.635,.008,.009,yaw=8):
             rows.append([(x+dx*.010*math.cos(a),y+dy*.002,z-dx*.010*math.sin(a))
                          for dx,dy in [(-1,-1),(1,-1),(1,1),(-1,1)]])
         rings(rows,canvas)
-    label('Aisle',-.051,-.110,.199,.174,white,True)
-    label('24',.091,-.110,.199,.101,blue,True)
     with place(-.124,.034,.365,-17,scale=.72):
         baguette()
     with place(.015,.052,.390,-5,scale=.78):
@@ -352,16 +376,24 @@ props = bpy.data.objects.new('Shopping',shopping)
 scene.collection.objects.link(props)
 for mat in materials:
     shopping.materials.append(mat)
+front_canvas_slot = len(shopping.materials)
+shopping.materials.append(front_canvas)
 uv = shopping.uv_layers.new(name=santa.data.uv_layers.active.name, do_init=False)
 uv.uv.foreach_set('vector', np.zeros(len(shopping.loops)*2, dtype=np.float32))
 for poly, slot, rounded in zip(shopping.polygons, slots, smooth):
     poly.material_index, poly.use_smooth = slot, rounded
     if materials[slot] == canvas:
-        a,b = sorted(range(3),key=lambda k: abs(poly.normal[k]))[:2]
-        a,b = sorted((a,b))
+        if poly.index in tote_shell and poly.normal.y < -.9:
+            poly.material_index = front_canvas_slot
+            for loop in poly.loop_indices:
+                x, _, z = shopping.vertices[shopping.loops[loop].vertex_index].co
+                uv.data[loop].uv = ((x * weave_tiles_per_meter - front_start_tile) / weave_repeats,
+                                    z * weave_tiles_per_meter / weave_repeats)
+            continue
+        a, b = sorted(sorted(range(3), key=lambda k: abs(poly.normal[k]))[:2])
         for loop in poly.loop_indices:
-            co=shopping.vertices[shopping.loops[loop].vertex_index].co
-            uv.data[loop].uv=(co[a]*24,co[b]*24)
+            co = shopping.vertices[shopping.loops[loop].vertex_index].co
+            uv.data[loop].uv = (co[a] * weave_tiles_per_meter, co[b] * weave_tiles_per_meter)
 for name in ('groceries','root'):
     props.vertex_groups.new(name=name).add([i for i,bone in enumerate(bones) if bone==name],1,'REPLACE')
 bpy.ops.object.select_all(action='DESELECT')
