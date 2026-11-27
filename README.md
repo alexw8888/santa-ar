@@ -28,6 +28,16 @@ The exporter also writes `santaNN-android.glb` with `scene_viewer_glb.py`: the s
 | Santa 05 | 140k → 105k | 4.5 MB | 5.6 MB |
 | Santa 06 | 158k → 123k | 5.2 MB | 6.3 MB |
 
+## Create a release ZIP
+
+With Node.js installed, run the following command from the repository root in Windows PowerShell or macOS Terminal.
+
+```sh
+node create-release.mjs
+```
+
+The script writes `santa-release.zip` in the repository root with the six public pages, their models and posters, and the shared model viewer and its license. The files are at the top level of the ZIP so they can be uploaded together to a web host. The script uses the ZIP tools bundled with Windows and macOS.
+
 ## How the editions are built
 
 Every edition starts from one base Santa, so a fix to Santa himself reaches all of them:
