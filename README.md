@@ -2,7 +2,7 @@
 
 Each version has its own public HTML page and model assets. GitHub Pages publishes `docs/` at https://alexw8888.github.io/santa-ar/. [preview.html](https://alexw8888.github.io/santa-ar/preview.html) (`docs/preview.html`) links to all six pages, with each one's poster; add a card there for a new edition.
 
-The six Santa pages and the Scene Viewer test share the bundled `@google/model-viewer` 4.0.0 release and its license in `docs/vendor/model-viewer/4.0.0/`.
+The six Santa pages and the Scene Viewer test share the bundled `@google/model-viewer` 4.0.0 release, `docs/model-viewer.min.js`, with its license in `docs/model-viewer-LICENSE`.
 
 | Version | Public page | Animation |
 | --- | --- | --- |

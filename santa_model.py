@@ -224,6 +224,10 @@ def character_materials():
     face_z = (y - .5) * .376 + 1.727
     blush = (np.exp(-((face_x - .108) / .060) ** 2 - ((face_z - 1.712) / .045) ** 2) +
              np.exp(-((face_x + .108) / .060) ** 2 - ((face_z - 1.712) / .045) ** 2)) * .62
+    # Pinker puffy lower lids, pushed up by the smile.
+    blush += (np.exp(-((face_x - .066) / .042) ** 2 - ((face_z - 1.762) / .014) ** 2) +
+              np.exp(-((face_x + .066) / .042) ** 2 - ((face_z - 1.762) / .014) ** 2)) * .40
+    blush = np.minimum(blush, .62)
     skin_linear = np.array((.80, .42, .30))[None, None, :]
     rosy_linear = np.array((.80, .25, .21))[None, None, :]
     face_linear = skin_linear * (1 - blush[:, :, None]) + rosy_linear * blush[:, :, None]
@@ -476,6 +480,60 @@ def hair_lock(points, radius, bones='head', sides=8, flat=.6, taper=None):
     radii = [radius * taper[min(len(taper) - 1, round(i * (len(taper) - 1) / (len(points) - 1)))] for i in range(len(points))]
     tube(points, radii, HAIR, bones, sides=sides, sub=1, flat=flat)
 
+def eyelid(center, radii, sign, corners, middle, inner, outer, bulge=(0, 0, 0), margin=.08, seg=56, rings=6):
+    """A thick, rounded eyelid of face skin wrapped over an eye white; returns its edge.
+
+    Worked out on the eye white's unit sphere, with x pointing out toward the temple: the lid is
+    the cap beyond the plane through the two eye `corners` and the `middle` of the lid's edge,
+    each an (x, z) point on the front of the sphere. `inner` and `outer` scale the lid's two
+    surfaces around the white per axis (the iris stays inside the outer one as the eye turns);
+    the outer one swells by `bulge` from the lid's far side to its edge (a puffy lower lid), and
+    the rounded edge between them bulges `margin` radians into the eye opening. The returned
+    edge(t, depth) runs from corner to corner as t goes 0..1, from the outer surface (depth 0)
+    over the rounded edge to the inner one (depth 1)."""
+    center, inner, outer, bulge = Vector(center), Vector(inner), Vector(outer), Vector(bulge)
+    def place(p, k):
+        return center + Vector((sign * p.x * k.x * radii[0], p.y * k.y * radii[1], p.z * k.z * radii[2]))
+    def front(x, z):
+        return Vector((x, -math.sqrt(max(0, 1 - x * x - z * z)), z))
+    a, b, m = front(*corners[0]), front(*corners[1]), front(*middle)
+    pole = (b - a).cross(m - a).normalized()
+    rim = pole.dot(a)
+    if -pole.y > rim:  # turn the cap away from the front of the eye
+        pole, rim = -pole, -rim
+    cap = math.acos(rim)
+    u = pole.orthogonal().normalized()
+    v = pole.cross(u)
+    def point(alpha, phi):
+        return pole * math.cos(alpha) + (u * math.cos(phi) + v * math.sin(phi)) * math.sin(alpha)
+    def lip(depth):
+        """Angle from the pole and surface scale across the rounded edge."""
+        return cap + margin * math.sin(math.pi * depth), (outer + bulge).lerp(inner, (1 - math.cos(math.pi * depth)) / 2)
+    steps = ([(cap * i / rings, outer + bulge * (i / rings) ** 2) for i in range(1, rings)] +
+             [lip(i / 5) for i in range(6)] + [(cap * .5, inner)])
+    rows = [[bm.verts.new(place(point(alpha, TAU * j / seg), k)) for j in range(seg)] for alpha, k in steps]
+    tips = (bm.verts.new(place(pole, outer)), bm.verts.new(place(pole, inner)))
+    def skin(verts):  # face-texture UVs from position, as `ellipsoid` gives FACE
+        uv_face(verts, [((p.co.x / .177 + 1) * .5, (p.co.z - 1.727) / .376 + .5) for p in verts])
+    for j in range(seg):
+        k = (j + 1) % seg
+        skin((tips[0], rows[0][j], rows[0][k]))
+        for r0, r1 in zip(rows, rows[1:]):
+            skin((r0[j], r1[j], r1[k], r0[k]))
+        skin((tips[1], rows[-1][k], rows[-1][j]))
+    finish([v for row in rows for v in row] + list(tips), FACE, 'head')
+    def angle(p):
+        q = p - pole * pole.dot(p)
+        return math.atan2(q.dot(v), q.dot(u))
+    start = angle(a)
+    span = (angle(b) - start) % TAU
+    if (angle(m) - start) % TAU > span:  # go round through the middle of the edge
+        span -= TAU
+    def edge(t, depth=.5):
+        alpha, k = lip(depth)
+        return place(point(alpha, start + span * t), k)
+    return edge
+
 
 def character():
     """Model the body, clothes, face, beard, cap, sleeves and the cupped left glove into `bm`."""
@@ -554,20 +612,28 @@ def character():
         ellipsoid((sign * .17, .012, 1.735), (.033, .027, .052), SKIN, seg=20, rings=14)
         # Round, raised, rosy cheeks.
         ellipsoid((sign * .108, -.102, 1.720), (.066, .044, .049), FACE, seg=32, rings=20)
-        # Wide-open, happy eyes.
-        ellipsoid((sign * .066, -.117, 1.788), (.037, .021, .034), WHITE, seg=28, rings=18)
+        # Smiling eyes: a half-moon opening under an arched upper lid, with a puffy lower lid
+        # pushed up over the bottom of the iris.
+        white_center, white_radii = (sign * .066, -.117, 1.788), (.037, .021, .034)
+        ellipsoid(white_center, white_radii, WHITE, seg=28, rings=18)
         # Irises are modelled looking straight ahead; their eye bones aim them at the glass each frame.
         eye = 'eye.L' if sign > 0 else 'eye.R'
         ellipsoid((sign * .062, -.135, 1.789), (.020, .009, .023), IRIS, eye, seg=24, rings=14)
         ellipsoid((sign * .062, -.142, 1.790), (.010, .004, .012), BLACK, eye, seg=20, rings=12)
-        ellipsoid((sign * .062 - .006, -.146, 1.800), (.005, .0025, .006), WHITE, eye, seg=12, rings=8)
-        # Raised upper lids, smile creases under the eyes and crow's feet.
-        tube([(sign * .030, -.126, 1.806), (sign * .066, -.140, 1.825), (sign * .102, -.118, 1.809)],
-             [.004, .0065, .0035], SKIN, sides=8, sub=4)
-        tube([(sign * .036, -.130, 1.762), (sign * .067, -.140, 1.753), (sign * .098, -.124, 1.762)],
-             [.003, .005, .003], FACE, sides=8, sub=4)
+        # A flat catchlight lying on the pupil's edge, so it hides under the lids as the eye turns.
+        ellipsoid((sign * .062 - .006, -.1452, 1.800), (.005, .0016, .006), WHITE, eye, seg=12, rings=8)
+        # Lids on the white's unit sphere (x toward the temple): outer and inner eye corners.
+        corners = ((.96, -.14), (-.90, -.29))
+        upper = eyelid(white_center, white_radii, sign, corners, (0, .62), (1.06, 1.42, 1.10), (1.16, 1.95, 1.34))
+        eyelid(white_center, white_radii, sign, corners, (-.05, -.41), (1.06, 1.42, 1.10), (1.16, 1.6, 1.34), bulge=(0, .5, 0))
+        # A dark lash line along the upper lid's edge, then crow's feet laid on the face's skin.
+        tube([upper(k / 16, .7) for k in range(17)], [.0005 + .0013 * math.sin(math.pi * k / 16) ** .5 for k in range(17)],
+             BLACK, sides=8, sub=2)
+        def on_face(x, z):
+            """A point 0.4 mm under the face ellipsoid's surface, so each crease is a low ridge."""
+            return (sign * x, .0124 - .153 * math.sqrt(max(0, 1 - (x / .177) ** 2 - ((z - 1.727) / .188) ** 2)), z)
         for k in range(3):
-            tube([(sign * .106, -.110, 1.772 + k * .011), (sign * .124, -.098, 1.768 + k * .016), (sign * .136, -.084, 1.766 + k * .021)],
+            tube([on_face(.106, 1.772 + k * .011), on_face(.124, 1.768 + k * .016), on_face(.136, 1.766 + k * .021)],
                  [.0018, .0022, .0008], SKIN, sides=6, sub=3)
         # Bushy, arched white eyebrows made of clumps.
         for k in range(7):
