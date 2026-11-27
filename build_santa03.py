@@ -15,7 +15,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import bmesh  # noqa: E402
-from mathutils import Matrix, Vector  # noqa: E402
+from mathutils import Matrix, Vector, Quaternion  # noqa: E402
 
 import santa_kit as kit  # noqa: E402
 import santa_flowers as fl  # noqa: E402
@@ -347,28 +347,56 @@ def left_arm(elbow_dir, forearm, flowers, bend):
     return grip, rot
 
 
+def gesture_ease(t, start, end):
+    """Quintic ease-in/ease-out with zero velocity and acceleration at endpoints."""
+    u = max(0.0, min(1.0, (t - start) / (end - start)))
+    return u**3 * (10.0 + u * (-15.0 + 6.0 * u))
+
+
+# Edition-local tuning: the shared baker applies these before solving the arms.
+# The values affect only this build process, not the other source files.
+kit.santa_motion.BODY_TILT_DEG = 4.0
+kit.santa_motion.CLOTHING_SWAY_DEG = 4.5
+kit.santa_motion.FOOT_ADJUST_DEG = 1.25
+kit.santa_motion.HAT_FOLLOW_DEG = 4.0
+
+
+def gesture_activity(t):
+    return gesture_ease(t, .05, .20) * (1 - gesture_ease(t, .80, 1))
+
+
 def pose_at(t):
-    # Hold the mug steady at the chest; it only breathes with him.
-    mug = MUG + Vector((0, 0, .004 * math.sin(TAU * t)))
+    lift = gesture_ease(t, .05, .20) * (1 - gesture_ease(t, .90, 1))
+    reach = gesture_ease(t, .42, .60) * (1 - gesture_ease(t, .80, .90))
+    phase = TAU * t
+    # Layer a small purposeful forward lean on the existing planted idle sway.
+    # Rotate about the rest-space lateral axis, converted into chest-local space.
+    chest = rig.pose.bones['chest']
+    axis = chest.bone.matrix_local.to_3x3().inverted() @ Vector((1, 0, 0))
+    chest.rotation_quaternion = chest.rotation_quaternion @ Quaternion(
+        axis.normalized(), math.radians(.8 * lift + 2.2 * reach + .45 * math.sin(2 * phase)))
+    kit.bpy.context.view_layer.update()
+    # Let the coffee follow a fraction of the chest motion while staying upright.
+    chest_delta = chest.matrix @ chest.bone.matrix_local.inverted() @ MUG - MUG
+    mug = MUG + .65 * chest_delta + Vector((0, 0, .006 * math.sin(phase)))
     tilt = turn(-2 - 1.5 * math.sin(TAU * t), 'X')
     rigid('mug', mug, tilt)
     hold('R', mug + tilt @ PALM, tilt)
     k = rig.pose.bones['steam']
     k.scale = (1, 1 + .08 * math.sin(TAU * 3 * t), 1)
     k.rotation_quaternion = turn(6 * math.sin(TAU * 2 * t), 'Z').to_quaternion()
-    # Offer the bouquet: lift it from his side to chest height, then reach forward and tip it toward
-    # the viewer (about 2 s), hold still for about four seconds so they can pose as if taking it,
-    # then draw it back and lower it together (about 2 s), easing the longer forward reach home.
-    lower = 1 - ramp(t, .76, 1)
-    lift = ramp(t, .05, .21) * lower
-    reach = ramp(t, .15, .28) * lower
+    # Lift, admire, look back up, then offer. Keep the eight-second loop.
+    # Retract the reach before lowering the bouquet to its resting position.
     rest = 1 - lift
     elbow_dir, forearm, flowers, bend = blend(lift, reach)
-    forearm = (forearm + Vector((0, 0, .02 * rest * math.sin(TAU * 2 * t)))).normalized()
+    # Small breathing and weight-shift response even during the held offer.
+    forearm = (forearm + Vector((.012 * math.sin(phase), 0,
+                (.008 + .012 * rest) * math.sin(2 * phase)))).normalized()
     grip, rot = left_arm(elbow_dir, forearm, flowers, bend)
-    # He glances at the bouquet as he raises it, and looks at the camera for the photo.
-    glance = math.sin(math.pi * ramp(t, .04, .36))
-    target = CAMERA.lerp(grip + rot @ Vector((0, 0, .25)), .8 * glance)
+    # Start the head turn during the lift, then bring his gaze back to the front
+    # before the bouquet begins its outward offering reach.
+    glance = gesture_ease(t, .08, .18) * (1 - gesture_ease(t, .30, .42))
+    target = CAMERA.lerp(grip + rot @ Vector((0, 0, .25)), .95 * glance)
     look(target)
     aim_eyes(target)
 
@@ -377,7 +405,8 @@ rig = kit.rig
 kit.attach('Bouquet Cafe props')
 kit.bake('Santa03_Offer_Bouquet', FRAMES, pose_at,
          ['mug', 'steam', 'bouquet', 'head', 'eye.L', 'eye.R'] +
-         [f'{n}.{s}' for s in 'LR' for n in ('upper_arm', 'forearm', 'hand')])
+         [f'{n}.{s}' for s in 'LR' for n in ('upper_arm', 'forearm', 'hand')],
+         activity=gesture_activity)
 FRONT = ((.12, -5.85, 1.98), (.10, -.03, 1.06), 77, (800, 900))
 kit.finish('santa03', FRONT, [
     ('front', 97, FRONT),

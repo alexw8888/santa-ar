@@ -8,6 +8,8 @@ from pxr import Usd, UsdGeom, UsdShade, UsdSkel
 
 ROOT = Path(__file__).resolve().parents[1]
 TEA = ('cup', 'kettle', 'liquid', 'aroma', 'stream')
+PAGES = {'santa03': 'Santa_Bouquet_Cafe', 'santa04': 'Santa_Landmark',
+         'santa05': 'Santa_Mello', 'santa06': 'Santa_Yunqueen'}
 
 
 def check(version, action, frames, holds, props, translucent=False):
@@ -84,7 +86,7 @@ def check(version, action, frames, holds, props, translucent=False):
         assert any(s.GetIdAttr().Get() == 'UsdPreviewSurface' and s.GetInput('opacity') and
                    0 < s.GetInput('opacity').Get() < .2
                    for p in stage.Traverse() if p.IsA(UsdShade.Shader) for s in [UsdShade.Shader(p)])
-    page = (docs / (version + '.html')).read_text(encoding='utf-8')
+    page = (docs / (PAGES[version] + '.html')).read_text(encoding='utf-8')
     assert action in page
     for asset in (version + '.glb', version + '-android.glb', version + '.usdz', version + '-poster.webp'):
         assert asset in page and (docs / asset).stat().st_size > 0

@@ -9,13 +9,13 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from mathutils import Matrix, Vector  # noqa: E402
+from mathutils import Matrix, Vector, Quaternion  # noqa: E402
 
 import santa_kit as kit  # noqa: E402
 from santa_kit import (TAU, aim_eyes, ball, bound, cord, ellipsoid, frame, hold, label, look,  # noqa: E402
                        material, place, profile, ramp, recolor, rigid, surface, turn)
 
-BUN = Vector((-.10, -.50, 1.33))      # rest centre of the cream bun: held low, in front of his chest
+BUN = Vector((0.0, -.50, 1.33))      # rest centre of the cream bun: held low, in front of his chest
 RX, RY, RZ = .15, .135, .13
 TOP = Vector((.55, 0, .835))          # the bite comes off the top of the bun, on the side away from the cream
 BITE = .080                           # depth of the bite's floor along TOP
@@ -23,6 +23,7 @@ GRIP = .10                            # each glove wraps the lower side of the b
 SACK = Vector((.74, .14, 0))
 kit.start(5, 'Mello', 'photos/05 Mello Santa.jpg', [
     ('bun', BUN, BUN + Vector((0, 0, .2)), 'root'),
+    ('mello_jaw', Vector((0, -.15, 1.644)), Vector((0, -.15, 1.704)), 'head'),
     # The piece he bites off: part of the bun until the bite, then gone into his mouth.
     ('chunk', BUN + TOP * BITE, BUN + TOP * (BITE + .1), 'bun'),
 ])
@@ -83,18 +84,16 @@ with bound('bun'), place(*BUN):
         row = [bitten(p) for p in row]
         grid.append([p for p, _ in row])
         carved.append([c for _, c in row])
-    quads = {False: [], True: []}
-    piece = []
+    # Partition the intact shell exactly at the bite rim. Mixed faces belong
+    # only to the removable cap, not to an overlapping exterior crust.
+    outside, piece = [], []
     for j in range(m):
         for i in range(n):
             quad = [(j, i), (j, (i + 1) % n), (j + 1, (i + 1) % n), (j + 1, i)]
             polygon = tuple(a * n + b for a, b in quad)
-            quads[all(carved[a][b] for a, b in quad)].append(polygon)
-            if any(carved[a][b] for a, b in quad):
-                piece.append(polygon)
-    surface([p for row in grid for p in row], quads[False], crust, rounded=True)
-    surface([p for row in grid for p in row], quads[True], crumb)
-    # The piece he bites off is the uncarved crust over the bite, meeting the bun along its rim.
+            (piece if any(carved[a][b] for a, b in quad) else outside).append(polygon)
+    surface([p for row in whole for p in row], outside, crust, rounded=True)
+    surface([p for row in grid for p in row], piece, crumb)
     with bound('chunk'):
         surface([p for row in whole for p in row], piece, crust, rounded=True)
     # Cream filling shows in the floor of the bite (hidden under the piece until he takes it).
@@ -212,21 +211,39 @@ with place(*SACK, yaw=-18):
         ball(0, -.066, -.004, .0065, button, 8, 4)
 
 
-# ---------------------------------------------------------------- five-second loop
+# ---------------------------------------------------------------- ten-second loop
 CAMERA = Vector((-.05, -3.2, 1.6))
+DURATION = 10.0
+FRAMES = 241
+LIP = Vector((0, -.205, 1.600))
+MOUTH = Vector((0, -.15, 1.625))
+LOW = turn(8, 'X')
+# Preserve the resting hand alignment: only a small backward pitch.
+HIGH = turn(-4, 'X')
+# Use the actual outer crust rather than an approximate radial distance.
+# Contact the inner portion of the actual removable crust, rather than its
+# furthest lateral point. This keeps the two-handed lift closer to midline.
+contact_candidates = [p for row in whole for p in row
+                      if bitten(p)[1] and p.dot(TOP) > BITE + .008
+                      and abs(p.x) < .085]
+# Use the rear-facing edge of the existing bite cap (towards Santa),
+# not its front/top centre. The pastry need not enter his beard.
+CONTACT = max(contact_candidates, key=lambda p: p.y - .35*abs(p.x-.025)
+              + .15*p.z) if contact_candidates else max(
+                  (p for row in whole for p in row), key=lambda p: p.dot(TOP))
+kit.santa_motion.BODY_TILT_DEG = 4.0
+kit.santa_motion.CLOTHING_SWAY_DEG = 4.5
+kit.santa_motion.FOOT_ADJUST_DEG = 1.25
+kit.santa_motion.HAT_FOLLOW_DEG = 4.0
 
 
-ACTION = 5                            # seconds: raise, bite, lower and chew
-REST = 3                              # seconds holding the bitten bun before the loop brings back a whole one
-FRAMES = (ACTION + REST) * 24 + 1
-LIP = Vector((0, -.205, 1.600))       # his lower lip at rest: the bitten edge of the bun comes up to here
-MOUTH = Vector((0, -.15, 1.625))      # just behind his lips, where the bitten piece disappears
-EDGE = .125                           # from the bun's centre out along TOP to its crust over the bite
-LOW = (BUN, turn(8, 'X'))             # held in front of his chest, the top tipped a little to the viewer
-# Raised under his chin: rolled so the bite site is the highest point of the bun, then tipped back and
-# turned in, so the bun's top edge meets his lips while his mouth stays in view above it.
-HIGH = turn(20, 'Z') @ turn(-25, 'X') @ turn(-25, 'Y')
-CHOMP = .44                           # the share of ACTION where his teeth close on the bun
+def ease(t, a, b):
+    u = max(0., min(1., (t-a)/(b-a)))
+    return u**3 * (10 + u * (-15 + 6*u))
+
+
+def pulse(t, a, b, c, d):
+    return ease(t,a,b) * (1-ease(t,c,d))
 
 
 def head_deform():
@@ -234,46 +251,193 @@ def head_deform():
     return head.matrix @ rig.data.bones['head'].matrix_local.inverted()
 
 
+def reachable(centre, spin):
+    constraints = []
+    for side, sign in (('L',1),('R',-1)):
+        upper = rig.data.bones['upper_arm.'+side]
+        fore = rig.data.bones['forearm.'+side]
+        offset = spin @ (Vector((sign*GRIP,-.01,-.055))-kit.GRIP[side])
+        constraints.append((kit.attached(upper.name)-offset, upper.length+fore.length-.012))
+    # Solve the two arm constraints in a constant-depth plane. Adjust
+    # height/lateral position first, never drag the bun toward the chest
+    # merely to achieve the requested height.
+    for depth in (centre.y, centre.y+.005, centre.y+.010, centre.y+.015):
+        disks = []
+        for anchor, radius in constraints:
+            r2 = radius*radius - (depth-anchor.y)**2
+            if r2 <= 0:
+                break
+            disks.append((Vector((anchor.x,anchor.z)),math.sqrt(r2)))
+        if len(disks) != 2:
+            continue
+        if (disks[0][0]-disks[1][0]).length > disks[0][1]+disks[1][1]:
+            continue
+        q = Vector((centre.x,centre.z))
+        for _ in range(200):
+            for anchor,radius in disks:
+                delta = q-anchor
+                if delta.length > radius:
+                    q = anchor+delta.normalized()*radius
+            if all((q-anchor).length <= radius+.00001 for anchor,radius in disks):
+                return Vector((q.x,depth,q.y))
+    # If the rig cannot reach the selected depth, use the safe original
+    # reach solver and report the exceptional frame rather than break grips.
+    print('[Mello] fixed-depth reach unavailable; using safe reach',flush=True)
+    for _ in range(100):
+        for anchor, radius in constraints:
+            delta = centre-anchor
+            if delta.length > radius:
+                centre = anchor+delta.normalized()*radius
+        if all((centre-anchor).length <= radius+.00001 for anchor,radius in constraints):
+            break
+    return centre
+
+
+def bind_mouth():
+    # The shared character has a sculpted open smile, not a jaw rig.
+    # Add a local lower-mouth control only to this edition. Keep teeth,
+    # upper lip, nose and moustache on the original head bone.
+    mesh = kit.santa
+    head = mesh.vertex_groups['head']
+    jaw = mesh.vertex_groups.new(name='mello_jaw')
+    weights = {}
+    for face in mesh.data.polygons:
+        mat = mesh.data.materials[face.material_index]
+        if not mat or mat.name not in ('Warm_lips', 'Laughing_mouth', 'Tongue', 'Laughing_face_skin'):
+            continue
+        for i in face.vertices:
+            v = mesh.data.vertices[i]
+            x,y,z = v.co
+            if abs(x) > .085 or y > -.10 or not 1.565 < z < 1.644:
+                continue
+            w = ease(1.644-z, .002, .037) * (1-ease(abs(x),.035,.080))
+            if mat.name == 'Laughing_face_skin':
+                w *= .25
+            weights[i] = max(weights.get(i,0.),w)
+    count = 0
+    for i,w in weights.items():
+        try:
+            original = head.weight(i)
+        except RuntimeError:
+            continue
+        if original < .99 or w < .001:
+            continue
+        jaw.add([i],original*w,'REPLACE')
+        head.add([i],original*(1-w),'REPLACE')
+        count += 1
+    print('[Mello] lower-mouth weighted vertices:',count,flush=True)
+
+
+# The bake evaluates frames sequentially. A bite is permitted only once
+# the actual, reach-limited pastry surface is close to the mouth.
+bite_start = None
+closest_contact = float('inf')
+
+
 def pose_at(loop):
-    f = round(loop * (FRAMES - 1)) + 1
-    # Gestures are timed as shares of ACTION; past it (t > 1) he just holds the bitten bun low.
-    t = loop * (FRAMES - 1) / (ACTION * 24)
-    lift = ramp(t, .08, .34) * (1 - ramp(t, .54, .80))
-    push = math.sin(math.pi * ramp(t, .34, .52))
-    chew = math.sin(TAU * 3 * ramp(t, .54, .94)) * (1 - ramp(t, .88, .94))
-    spin = LOW[1].to_quaternion().slerp(HIGH.to_quaternion(), lift).to_matrix()
-    # His head turns toward where the bun is going and leans in for the bite; the bun then rises to
-    # wherever his lips are, and his teeth close on its top edge.
-    target = CAMERA.lerp(LIP, min(1, lift * 1.3))
-    look(target, math.radians(4) * push + math.radians(2.5) * chew, turn_share=.45)
-    aim_eyes(target + Vector((0, 0, -.08)) * lift)
+    global bite_start, closest_contact
+    t = loop * DURATION
+    if t == 0:
+        bite_start = None
+        closest_contact = float('inf')
+    # Anticipation: eyes and head lead the lift; the elbows follow.
+    lift = pulse(t,.50,2.30,3.60,5.10)
+    meet = pulse(t,1.85,2.85,3.60,4.40)
+    inspect = pulse(t,.12,.80,3.95,5.70)
+    anticipation = pulse(t,.12,.55,.72,1.35)
+    # A few small, uneven chewing impulses instead of mechanical nodding.
+    chew = sum(amplitude * pulse(t,a,a+.12,a+.17,b) for a,b,amplitude in (
+        (3.48,3.86,1.0),(3.97,4.40,.78),(4.51,4.99,.55),
+        (5.10,5.65,.34)))
+    satisfied = pulse(t,5.85,6.18,6.32,6.85)
+    phase = TAU*loop
+    chest = rig.pose.bones['chest']
+    axis = chest.bone.matrix_local.to_3x3().inverted() @ Vector((1,0,0))
+    # Keep feet planted through the shared idle system; lean in gently to eat.
+    chest.rotation_quaternion = chest.rotation_quaternion @ Quaternion(
+        axis.normalized(),math.radians(.7*anticipation+1.0*lift+4.0*meet+.25*chew
+                     + .45*math.sin(2*phase)*(1-.75*meet)))
+    kit.bpy.context.view_layer.update()
+    follow = (chest.matrix @ chest.bone.matrix_local.inverted() @ BUN - BUN)*.65
+    low = BUN + Vector((follow.x, max(-.015,min(.005,follow.y)),follow.z)) + Vector((.008*math.sin(phase)*(1-.85*meet),0,.006*math.sin(2*phase)*(1-.75*meet)))
+    # Preserve the wrist fix: no yaw or roll, only the existing small pitch.
+    spin = LOW.to_quaternion().slerp(HIGH.to_quaternion(),meet).to_matrix()
+    # Look at the rising pastry, not its stationary chest-level location.
+    # Estimate the visible pastry centre without introducing a head/hand feedback loop.
+    raised = Vector((low.x, -.49, 1.49))
+    visual_bun = low.lerp(raised,lift)
+    target = CAMERA.lerp(visual_bun + Vector((0,0,.05)),.85*inspect)
+    look(target,math.radians(5*meet + .22*chew + .9*satisfied),turn_share=.45)
+    eye_inspect = pulse(t,.04,.55,3.95,5.45)
+    aim_eyes(CAMERA.lerp(visual_bun + Vector((0,0,.05)),.95*eye_inspect))
+    kit.bpy.context.view_layer.update()
     lip = head_deform() @ LIP
-    centre = LOW[0].lerp(lip - HIGH @ (TOP * EDGE), lift) + Vector((0, .018, .012)) * push
-    rigid('bun', centre, spin)
-    on_bun = centre + spin @ (TOP * BITE)
-    if t < CHOMP or f == FRAMES:
-        rigid('chunk', on_bun, spin)                       # still part of the bun
-    elif f == FRAMES - 1:
-        rigid('chunk', on_bun, spin * .01)                 # back on the bun, too small to see, ready to loop
+    # Explicit upward path, independent of the lip depth. Only a tiny
+    # inward movement is allowed at the very top, after clearing the chest.
+    near = Vector((low.x, -.49 + .025*meet, lip.z - (spin @ CONTACT).z))
+    desired = low.lerp(near,lift) + Vector((0,-.012,.012)) * (4*lift*(1-lift))
+    centre = reachable(desired,spin)
+    # Let the head meet the reachable bun, without changing wrist orientation.
+    contact = centre + spin @ CONTACT
+    gap = contact - lip
+    if meet > 0 and gap.length > .001:
+        head = rig.pose.bones['head']
+        shift = Vector((max(-.025,min(.025,gap.x)),
+                        max(-.080,min(0.,gap.y)),
+                        max(-.035,min(.025,gap.z)))) * meet
+        matrix = head.matrix.copy()
+        matrix.translation += shift
+        head.matrix = matrix
+        kit.bpy.context.view_layer.update()
+    lip = head_deform() @ LIP
+    distance = (contact-lip).length
+    if 2.85 <= t <= 3.48:
+        closest_contact = min(closest_contact,distance)
+        if bite_start is None and t >= 3.0 and distance <= .025:
+            bite_start = t
+            print('[Mello] contact at %.3fs, gap %.3fm' % (t,distance),flush=True)
+    # Preserve the eating sequence even if the contact tolerance is missed.
+    # The fallback occurs at the held bite pose, before the arms lower.
+    if bite_start is None and t >= 3.30:
+        bite_start = t
+        print('[Mello] Timed bite fallback; nearest contact %.3fm' % closest_contact,flush=True)
+    rigid('bun',centre,spin)
+    on_bun = centre + spin @ (TOP*BITE)
+    gone = ease(t,bite_start,bite_start+.18) if bite_start is not None else 0.
+    if loop >= 1.0-1e-8:
+        gone = 0.
+    if gone == 0:
+        rigid('chunk',on_bun,spin)
     else:
-        gone = ramp(t, CHOMP, CHOMP + .06)
-        rigid('chunk', on_bun.lerp(head_deform() @ MOUTH, gone), spin * (1 - .99 * gone))
-    for side, sign in (('L', 1), ('R', -1)):
-        hold(side, centre + spin @ Vector((sign * GRIP, -.01, -.055)), spin)
+        # Pull the cap into the mouth only during the contact window.
+        # Once hidden keep it collapsed at the bun rather than tracking the face.
+        point = on_bun.lerp(head_deform() @ MOUTH,gone) if gone < 1 else on_bun
+        rigid('chunk',point,spin*(1-.999*gone))
+    # Close the sculpted smile for the bite, then use the lower-mouth
+    # control for chewing rather than exaggerating head nods.
+    opening = pulse(t,2.25,2.85,3.0,3.22)
+    closure = pulse(t,bite_start,bite_start+.20,5.65,6.25) if bite_start is not None else 0.
+    jaw_delta = .021*closure - .010*opening - .008*chew*closure
+    jaw = rig.pose.bones['mello_jaw']
+    jaw.location = jaw.bone.matrix_local.to_3x3().inverted() @ Vector((0,0,jaw_delta))
+    for side,sign in (('L',1),('R',-1)):
+        hold(side,centre+spin @ Vector((sign*GRIP,-.01,-.055)),spin)
 
 
+bind_mouth()
 kit.attach('Mello props')
 kit.bake('Santa05_Cream_Bun_Bite', FRAMES, pose_at,
-         ['bun', 'chunk', 'head', 'eye.L', 'eye.R'] + [f'{n}.{s}' for s in 'LR' for n in ('upper_arm', 'forearm', 'hand')])
+         ['bun','chunk','head','eye.L','eye.R','mello_jaw'] + [f'{n}.{s}' for s in 'LR' for n in ('upper_arm','forearm','hand')],
+         activity=lambda t: pulse(t*DURATION,.50,2.30,3.60,5.10))
 FRONT = ((.12, -5.85, 1.98), (.12, -.03, 1.06), 77, (800, 900))
 CLOSE = ((-.30, -1.45, 1.70), (-.05, -.35, 1.50), 62, (640, 640))
-BITE_FRAME = round(CHOMP * ACTION * 24) + 1
+BITE_FRAME = round(3.35 * 24) + 1
 kit.finish('santa05', FRONT, [
     ('front', 1, FRONT),
     ('raise', 40, FRONT),
     ('bite', BITE_FRAME, CLOSE),
     ('side', BITE_FRAME, ((-1.6, -.9, 1.65), (-.03, -.25, 1.55), 70, (640, 640))),
-    ('bitten', 90, FRONT),
-    ('bun', 90, CLOSE),
+    ('bitten', 132, FRONT),
+    ('bun', 132, CLOSE),
     ('sack', 1, ((.95, -1.9, .85), (.74, .1, .45), 70, (640, 640))),
 ])

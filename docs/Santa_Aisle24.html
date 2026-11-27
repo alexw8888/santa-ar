@@ -3,8 +3,8 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <title>Santa 05 &middot; Mello in AR</title>
-  <script type="module" src="https://cdn.jsdelivr.net/npm/@google/model-viewer@4.0.0/dist/model-viewer.min.js"></script>
+  <title>Santa 02 &middot; Aisle24 in AR</title>
+  <script type="module" src="./vendor/model-viewer/4.0.0/model-viewer.min.js"></script>
   <style>
     :root {
       --bg: #f6f3ee;
@@ -113,17 +113,17 @@
 </head>
 <body>
   <header>
-    <h1>Santa at Mello</h1>
-    <p class="edition">Santa 05 &middot; Cream bun break</p>
+    <h1>Santa at Aisle24</h1>
+    <p class="edition">Santa 02 &middot; Grocery run</p>
     <p id="launchHint" role="status">Opening AR on supported phones…</p>
   </header>
 
   <model-viewer
-    id="santa05"
-    data-src="santa05.glb?v=mello-6"
-    data-android-src="santa05-android.glb?v=mello-6"
-    ios-src="santa05.usdz?v=mello-6"
-    alt="Santa bites into a strawberry cream bun beside a mustard velvet Mello sack of gifts."
+    id="santa02"
+    data-src="santa02.glb?v=groceries-4"
+    data-android-src="santa02-android.glb?v=groceries-4"
+    ios-src="santa02.usdz?v=groceries-4"
+    alt="Santa lifts an armful of groceries beside a filled Aisle24 canvas tote."
     ar
     ar-modes="webxr scene-viewer quick-look"
     ar-scale="auto"
@@ -131,13 +131,13 @@
     camera-controls
     touch-action="pan-y"
     camera-orbit="-3deg 81deg auto"
-    poster="santa05-poster.webp?v=mello-6"
+    poster="santa02-poster.webp?v=groceries-4"
     shadow-intensity="1"
     shadow-softness="0.8"
     exposure="1.05"
     environment-image="neutral"
     autoplay
-    animation-name="Santa05_Cream_Bun_Bite">
+    animation-name="Santa02_Grocery_Lift">
 
     <button slot="ar-button" class="ar-button">🎅 View in your space</button>
     <div class="ar-prompt">Move your phone slowly to find the floor</div>
@@ -152,11 +152,11 @@
   </model-viewer>
 
   <script type="module">
-    const mv = document.getElementById('santa05');
+    const mv = document.getElementById('santa02');
     const btn = document.getElementById('toggleAnim');
     const hint = document.getElementById('launchHint');
     const tapHint = 'If AR doesn’t open automatically, tap “View in your space”.';
-    const animation = 'Santa05_Cream_Bun_Bite';
+    const animation = 'Santa02_Grocery_Lift';
 
     // iPhone/iPad open the USDZ in AR Quick Look, which never uses the GLB. Same test as model-viewer.
     const quickLook = (() => {

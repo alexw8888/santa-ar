@@ -3,8 +3,8 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <title>Santa 06 &middot; Yunqueen in AR</title>
-  <script type="module" src="https://cdn.jsdelivr.net/npm/@google/model-viewer@4.0.0/dist/model-viewer.min.js"></script>
+  <title>Santa 04 &middot; Landmark on Robson in AR</title>
+  <script type="module" src="./vendor/model-viewer/4.0.0/model-viewer.min.js"></script>
   <style>
     :root {
       --bg: #f6f3ee;
@@ -113,17 +113,17 @@
 </head>
 <body>
   <header>
-    <h1>Santa at Yunqueen</h1>
-    <p class="edition">Santa 06 &middot; Rice noodle bowl</p>
+    <h1>Santa at Landmark on Robson</h1>
+    <p class="edition">Santa 04 &middot; A little lit tree</p>
     <p id="launchHint" role="status">Opening AR on supported phones…</p>
   </header>
 
   <model-viewer
-    id="santa06"
-    data-src="santa06.glb?v=yunqueen-6"
-    data-android-src="santa06-android.glb?v=yunqueen-6"
-    ios-src="santa06.usdz?v=yunqueen-6"
-    alt="Santa holds a steaming Yunqueen rice noodle bowl in one hand and lifts noodles with chopsticks while a yellow duck sways beside him."
+    id="santa04"
+    data-src="santa04.glb?v=landmark-4"
+    data-android-src="santa04-android.glb?v=landmark-4"
+    ios-src="santa04.usdz?v=landmark-4"
+    alt="Santa holds a small lit Christmas tree topped with a glowing Landmark on Robson sign."
     ar
     ar-modes="webxr scene-viewer quick-look"
     ar-scale="auto"
@@ -131,13 +131,13 @@
     camera-controls
     touch-action="pan-y"
     camera-orbit="-3deg 81deg auto"
-    poster="santa06-poster.webp?v=yunqueen-6"
+    poster="santa04-poster.webp?v=landmark-4"
     shadow-intensity="1"
     shadow-softness="0.8"
     exposure="1.05"
     environment-image="neutral"
     autoplay
-    animation-name="Santa06_Noodle_Chopsticks">
+    animation-name="Santa04_Tree_Glow">
 
     <button slot="ar-button" class="ar-button">🎅 View in your space</button>
     <div class="ar-prompt">Move your phone slowly to find the floor</div>
@@ -152,11 +152,11 @@
   </model-viewer>
 
   <script type="module">
-    const mv = document.getElementById('santa06');
+    const mv = document.getElementById('santa04');
     const btn = document.getElementById('toggleAnim');
     const hint = document.getElementById('launchHint');
     const tapHint = 'If AR doesn’t open automatically, tap “View in your space”.';
-    const animation = 'Santa06_Noodle_Chopsticks';
+    const animation = 'Santa04_Tree_Glow';
 
     // iPhone/iPad open the USDZ in AR Quick Look, which never uses the GLB. Same test as model-viewer.
     const quickLook = (() => {

@@ -24,6 +24,8 @@ HEIGHT, WIDTH, DEPTH = .68, .25, .72  # foliage height, half-width and depth rat
 TIP = TREE + Vector((0, 0, HEIGHT))
 kit.start(4, 'LandmarkOnRobson', 'photos/04 Landmark on Robson Santa.jpg', [
     ('tree', TREE + GRIPS, TREE + GRIPS + Vector((0, 0, .2)), 'root'),
+    ('tree_flex', TREE + GRIPS + LEAN @ Vector((0, 0, .18)),
+     TREE + GRIPS + LEAN @ Vector((0, 0, .48)), 'tree'),
 ])
 rig = kit.rig
 
@@ -144,26 +146,121 @@ with bound('tree'), frame(Matrix.Translation(TREE + GRIPS) @ LEAN.to_4x4() @ Mat
     cord([(0, 0, HEIGHT + .06), SIGN + Vector((0, .01, -.12))], .004, gold, sides=6)
 
 
-# ---------------------------------------------------------------- five-second loop
+# ---------------------------------------------------------------- eight-second presentation loop
+from mathutils import Quaternion
+from santa_kit import ramp
+
+# Local settings, matching the approved Santa03 idle approach.
+kit.santa_motion.BODY_TILT_DEG = 3.0
+kit.santa_motion.CLOTHING_SWAY_DEG = 4.0
+kit.santa_motion.FOOT_ADJUST_DEG = 1.25
+kit.santa_motion.HAT_FOLLOW_DEG = 4.0
+
+def ease(t, a, b):
+    u = max(0.0, min(1.0, (t-a)/(b-a)))
+    return u**3 * (10 + u * (-15 + 6*u))
+
+FRAMES = 193
+CAMERA = Vector((-.20, -6.1, 2.05))
+PIVOT = TREE + GRIPS
+
+
+def pulse(t, a, b, c, d):
+    return ease(t, a, b) * (1 - ease(t, c, d))
+
+
+def phases(t):
+    prep = pulse(t, 0, .045, .075, .20)
+    lift = pulse(t, .075, .25, .86, 1)
+    offer = pulse(t, .45, .575, .775, .86)
+    # Begin returning earlier so the head has 1.44 s to ease back to front,
+    # finishing just as the existing offering gesture starts.
+    gaze = pulse(t, .075, .25, .27, .45)
+    return prep, lift, offer, gaze
+
+
 def pose_at(t):
-    lift = .5 - .5 * math.cos(TAU * t)
-    rock = turn(4 * math.sin(TAU * 2 * t), 'Y') @ turn(-3 * lift, 'X')
-    centre = TREE + GRIPS + Vector((0, -.02, .05)) * lift
+    prep, lift, offer, gaze = phases(t)
+    phase = 0. if t >= 1 else TAU * t
+    wave = math.sin(phase)
+    breathe = math.sin(2 * phase)
+    # Shared kit.bake sway already runs before this function. Add a local
+    # load-dependent chest/spine response, before solving the two arm grips.
+    for name, degrees in (('spine', -1.5 * lift + 1.5 * prep),
+                          ('chest', -2.0 * lift + 2.5 * offer + .7 * breathe)):
+        pb = rig.pose.bones[name]
+        axis = pb.bone.matrix_local.to_3x3().inverted() @ Vector((1, 0, 0))
+        pb.rotation_quaternion = pb.rotation_quaternion @ Quaternion(axis.normalized(), math.radians(degrees))
+    kit.bpy.context.view_layer.update()
+
+    # Follow a fraction of chest displacement so the tree moves with Santa.
+    chest = rig.pose.bones['chest']
+    deform = chest.matrix @ chest.bone.matrix_local.inverted()
+    follow = (deform @ PIVOT - PIVOT) * .45
+    settle = pulse(t, .23, .29, .35, .43) * math.sin(TAU * (t - .23) / .20)
+    centre = PIVOT + follow + Vector((.009 * wave, -.015 * lift - .025 * offer,
+                                      .075 * lift - .012 * prep + .003 * breathe))
+    rock = turn(1.1 * wave + 2.2 * settle, 'Y') @ turn(-2.5 * lift + 1.5 * offer, 'X')
+    # Constrain the shared tree pivot, not individual hands. Both wrists
+    # must stay within their actual posed shoulder's reach sphere.
+    rotation = rock @ LEAN
+    constraints = []
+    for side, sign in (('L', 1), ('R', -1)):
+        upper = rig.data.bones['upper_arm.' + side]
+        fore = rig.data.bones['forearm.' + side]
+        shoulder = kit.attached(upper.name)
+        offset = rotation @ (Vector((sign * SPAN, 0, 0)) - kit.GRIP[side])
+        constraints.append((shoulder - offset, upper.length + fore.length - .012))
+    # Alternating projections onto the two convex reach balls, with a
+    # safety margin above the solver's required 5 mm clearance.
+    for _ in range(100):
+        for anchor, radius in constraints:
+            delta = centre - anchor
+            if delta.length > radius:
+                centre = anchor + delta.normalized() * radius
+        if all((centre - anchor).length <= radius + .00001 for anchor, radius in constraints):
+            break
+    if not all((centre - anchor).length < radius + .001 for anchor, radius in constraints):
+        raise RuntimeError('Tree grip reach constraints do not overlap')
     rigid('tree', centre, rock)
     for side, sign in (('L', 1), ('R', -1)):
-        hold(side, centre + rock @ LEAN @ Vector((sign * SPAN, 0, 0)), rock @ LEAN)
-    sign_board = centre + rock @ LEAN @ (TIP - TREE - GRIPS + Vector((-.07, 0, .22)))
-    look(sign_board, -math.radians(3) * lift, turn_share=.3)
-    aim_eyes(sign_board)
+        hold(side, centre + rotation @ Vector((sign * SPAN, 0, 0)), rotation)
+
+    # Lightweight flexible foliage: upper branches, lights and ornaments
+    # settle together; the lower grip area stays rigid.
+    flex = rig.pose.bones['tree_flex']
+    flex.rotation_quaternion = Quaternion((1, 0, 0), math.radians(.7 * breathe + 1.5 * settle)) @ Quaternion((0, 0, 1), math.radians(.8 * wave - 1.8 * settle))
+    kit.bpy.context.view_layer.update()
+    sign_rest = PIVOT + LEAN @ (SIGN - GRIPS)
+    sign_board = flex.matrix @ flex.bone.matrix_local.inverted() @ sign_rest
+    target = CAMERA.lerp(sign_board, gaze)
+    look(target, -math.radians(2) * gaze, turn_share=.55)
+    aim_eyes(target)
 
 
 kit.attach('Landmark on Robson props')
-kit.bake('Santa04_Tree_Glow', 121, pose_at,
-         ['tree', 'head', 'eye.L', 'eye.R'] + [f'{n}.{s}' for s in 'LR' for n in ('upper_arm', 'forearm', 'hand')])
+# Smoothly transfer upper tree vertices to a single child bone. Preserve the
+# original shape, UVs and materials; keep the sign fully on the same bone.
+mesh = kit.santa
+base_group = mesh.vertex_groups['tree']
+flex_group = mesh.vertex_groups.get('tree_flex') or mesh.vertex_groups.new(name='tree_flex')
+for v in mesh.data.vertices:
+    if not any(g.group == base_group.index for g in v.groups):
+        continue
+    local = LEAN.transposed() @ (v.co - PIVOT) + GRIPS
+    weight = ramp(local.z, .22, .55)
+    if weight > 0:
+        base_group.add([v.index], 1 - weight, 'REPLACE')
+        flex_group.add([v.index], weight, 'REPLACE')
+mesh.data.update()
+kit.bake('Santa04_Tree_Glow', FRAMES, pose_at,
+         ['tree', 'tree_flex', 'head', 'eye.L', 'eye.R'] +
+         [f'{n}.{s}' for s in 'LR' for n in ('upper_arm', 'forearm', 'hand')],
+         activity=lambda t: max(phases(t)[1:3]))
 FRONT = ((-.20, -6.1, 2.05), (-.06, -.03, 1.13), 74, (800, 900))
 kit.finish('santa04', FRONT, [
-    ('front', 1, FRONT),
-    ('lift', 61, FRONT),
+    ('front', 121, FRONT),
+    ('lift', 121, FRONT),
     ('tree', 1, ((-.55, -2.1, 1.75), (-.25, -.52, 1.62), 60, (640, 640))),
     ('sign', 1, ((-.55, -1.45, 2.15), (-.40, -.55, 2.12), 80, (640, 640))),
 ])

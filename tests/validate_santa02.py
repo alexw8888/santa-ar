@@ -72,7 +72,7 @@ assert any(p.IsA(UsdSkel.Animation) and
 assert any(s.GetIdAttr().Get() == 'UsdPreviewSurface' and s.GetInput('opacity') and
            0 < s.GetInput('opacity').Get() < .2
            for p in stage.Traverse() if p.IsA(UsdShade.Shader) for s in [UsdShade.Shader(p)])
-page = (docs / 'santa02.html').read_text(encoding='utf-8')
+page = (docs / 'Santa_Aisle24.html').read_text(encoding='utf-8')
 assert action in page
 for asset in ('santa02.glb', 'santa02-android.glb', 'santa02.usdz', 'santa02-poster.webp'):
     assert asset in page and (docs / asset).stat().st_size > 0

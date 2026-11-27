@@ -2,14 +2,16 @@
 
 Each version has its own public HTML page and model assets. GitHub Pages publishes `docs/` at https://alexw8888.github.io/santa-ar/. [preview.html](https://alexw8888.github.io/santa-ar/preview.html) (`docs/preview.html`) links to all six pages, with each one's poster; add a card there for a new edition.
 
+The six Santa pages and the Scene Viewer test share the bundled `@google/model-viewer` 4.0.0 release and its license in `docs/vendor/model-viewer/4.0.0/`.
+
 | Version | Public page | Animation |
 | --- | --- | --- |
-| Santa 01 | [santa01b.html](https://alexw8888.github.io/santa-ar/santa01b.html) | Pour chai from a brass kettle while watching the glass, then raise the glass to his lips and sip it empty |
-| Santa 02 | [santa02.html](https://alexw8888.github.io/santa-ar/santa02.html) | Lift an armful of Aisle24 groceries, glance down and settle them back into both hands |
-| Santa 03 | [santa03.html](https://alexw8888.github.io/santa-ar/santa03.html) | Hold a steaming Bouquet Café mug, raise a wrapped bouquet from his side and reach forward to offer it to the viewer at chest height, with the flowers tipped toward them, pausing so they can pose as if taking it |
-| Santa 04 | [santa04.html](https://alexw8888.github.io/santa-ar/santa04.html) | Lift and gently rock a little lit tree crowned with the glowing Landmark on Robson sign |
-| Santa 05 | [santa05.html](https://alexw8888.github.io/santa-ar/santa05.html) | Lift a strawberry cream bun from chest height to his lips, bite a piece off the top, then lower it and chew beside the Mello sack |
-| Santa 06 | [santa06.html](https://alexw8888.github.io/santa-ar/santa06.html) | Hold a steaming Yunqueen rice noodle bowl in one hand and lift a bundle of noodles with chopsticks in the other while the yellow duck sways |
+| Santa 01 | [Santa_Chaiiwala.html](https://alexw8888.github.io/santa-ar/Santa_Chaiiwala.html) | Pour chai from a brass kettle while watching the glass, then raise the glass to his lips and sip it empty |
+| Santa 02 | [Santa_Aisle24.html](https://alexw8888.github.io/santa-ar/Santa_Aisle24.html) | Lift an armful of Aisle24 groceries, glance down and settle them back into both hands |
+| Santa 03 | [Santa_Bouquet_Cafe.html](https://alexw8888.github.io/santa-ar/Santa_Bouquet_Cafe.html) | Hold a steaming Bouquet Café mug, raise a wrapped bouquet from his side and reach forward to offer it to the viewer at chest height, with the flowers tipped toward them, pausing so they can pose as if taking it |
+| Santa 04 | [Santa_Landmark.html](https://alexw8888.github.io/santa-ar/Santa_Landmark.html) | Lift and gently rock a little lit tree crowned with the glowing Landmark on Robson sign |
+| Santa 05 | [Santa_Mello.html](https://alexw8888.github.io/santa-ar/Santa_Mello.html) | Lift a strawberry cream bun from chest height to his lips, bite a piece off the top, then lower it and chew beside the Mello sack |
+| Santa 06 | [Santa_Yunqueen.html](https://alexw8888.github.io/santa-ar/Santa_Yunqueen.html) | Hold a steaming Yunqueen rice noodle bowl in one hand and lift a bundle of noodles with chopsticks in the other while the yellow duck sways |
 
 Open a page in Chrome on Android or Safari on iPhone/iPad. On iPhone/iPad the page opens AR Quick Look straight away, which downloads only the USDZ; it holds back the GLB for the in-page 3D view until you return to the page or tap it, so the two downloads never compete. If Safari blocks the automatic launch, **View in your space** opens it. Android opens AR only when you tap **View in your space**, in Chrome's own AR (WebXR) first, which renders the full GLB. Phones without WebXR AR fall back to Scene Viewer and load `santaNN-android.glb` instead, since Scene Viewer downloads the page's model; on some phones Scene Viewer closes as soon as it opens, even with Google's own sample model, while WebXR works. AR opens only from a tap because Chrome treats an automatic jump to Scene Viewer as a redirect and closes the tab, so the page would be gone when AR ends. `docs/test/scene-viewer.html` launches Scene Viewer and WebXR variants one tap at a time to see which work on a phone. Desktop browsers show the interactive 3D model.
 
@@ -73,7 +75,7 @@ The 12.5-second loop (`Santa01_Natural_Shoulders_Drink_Cup_Tilt`) is computed in
 3. A subtle torso counterlean while the kettle is up: the kettle-side shoulder rises and the glass-side one drops, and the arms re-solve to the same wrists.
 4. The sip: the glass comes to his lips and tips about 17°, the left glove gripping it. The chai fills while it is poured (the stream always reaches its surface) and drains while he sips, so the glass is empty at both ends of the loop and playback wraps without a pop; the steam fades with the last sip.
 
-`previews/santa01-*.png` show the front view (also the poster), the pour and the sip, the face, the kettle lettering and a fabric close-up. The test checks the rigid grips, arm joints, stream, chai level, the sip, the eyes following the glass, loop closure, and that the GLB, USDZ and `docs/santa01b.html` agree.
+`previews/santa01-*.png` show the front view (also the poster), the pour and the sip, the face, the kettle lettering and a fabric close-up. The test checks the rigid grips, arm joints, stream, chai level, the sip, the eyes following the glass, loop closure, and that the GLB, USDZ and `docs/Santa_Chaiiwala.html` agree.
 
 ## Santa 02
 
