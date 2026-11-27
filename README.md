@@ -21,7 +21,7 @@ The exporter also writes `santaNN-android.glb` with `scene_viewer_glb.py`: the s
 
 | Edition | Triangles (scene → export) | GLB | USDZ |
 | --- | --- | --- | --- |
-| Santa 01 | 138k → 103k | 4.5 MB | 3.6 MB |
+| Santa 01 | 136k → 101k | 4.3 MB | 3.5 MB |
 | Santa 02 | 152k → 118k | 4.8 MB | 6.0 MB |
 | Santa 03 | 271k → 186k | 8.4 MB | 10.3 MB |
 | Santa 04 | 173k → 138k | 6.5 MB | 7.6 MB |
@@ -66,7 +66,7 @@ Modelled on the Santa 01 reference photo (`photos/01 Chaiiwala Santa.jpg`):
 
 ## Santa 01
 
-`build_santa01.py` adds a golden brass kettle in the right glove (its own kettle grip replaces the base's cupped right glove) and a cutting-chai glass in the cupped left glove. The kettle's large beaded oval cartouche carries raised "Chaiiwala" and "of London" lettering with a small kettle-and-glass emblem, modelled as geometry (Blender's built-in font) and wrapped to the kettle's curve.
+`build_santa01.py` adds a golden brass kettle in the right glove (its own kettle grip replaces the base's cupped right glove) and a cutting-chai glass in the cupped left glove. The kettle's front carries a polished brass plaque with a gold rim, printed with the Chaiiwala logo (`photos/chaiiwala_logo_black.png`) at its own aspect ratio and wrapped to the kettle's curve. The ink is a near-zero-reflectance metal, so it stays a neutral black instead of picking up the brass and the red coat.
 
 The 12.5-second loop (`Santa01_Natural_Shoulders_Drink_Cup_Tilt`) is computed in one pass per frame, in layers:
 
@@ -75,7 +75,7 @@ The 12.5-second loop (`Santa01_Natural_Shoulders_Drink_Cup_Tilt`) is computed in
 3. A subtle torso counterlean while the kettle is up: the kettle-side shoulder rises and the glass-side one drops, and the arms re-solve to the same wrists.
 4. The sip: the glass comes to his lips and tips about 17°, the left glove gripping it. The chai fills while it is poured (the stream always reaches its surface) and drains while he sips, so the glass is empty at both ends of the loop and playback wraps without a pop; the steam fades with the last sip.
 
-`previews/santa01-*.png` show the front view (also the poster), the pour and the sip, the face, the kettle lettering and a fabric close-up. The test checks the rigid grips, arm joints, stream, chai level, the sip, the eyes following the glass, loop closure, and that the GLB, USDZ and `docs/Santa_Chaiiwala.html` agree.
+`previews/santa01-*.png` show the front view (also the poster), the pour and the sip, the face, the kettle's logo plaque and a fabric close-up. The test checks the rigid grips, arm joints, stream, chai level, the sip, the eyes following the glass, loop closure, and that the GLB, USDZ and `docs/Santa_Chaiiwala.html` agree.
 
 ## Santa 02
 

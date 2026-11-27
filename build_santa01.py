@@ -5,8 +5,8 @@ blender -b --factory-startup --python-exit-code 1 -P build_santa01.py -- [previe
 Needs santa_base.blend (build_santa_base.py). Writes santa01.blend, and with a preview folder the
 previews and docs/santa01-poster.webp; name shots after the folder to render only those.
 
-Santa 01 is modelled on photos/01 Chaiiwala Santa.jpg: a golden brass kettle with raised
-"Chaiiwala / of London" lettering in his right glove, its own kettle grip, and a cutting-chai glass
+Santa 01 is modelled on photos/01 Chaiiwala Santa.jpg: a golden brass kettle with a plaque
+printed with the Chaiiwala logo in his right glove, its own kettle grip, and a cutting-chai glass
 in his cupped left glove. The 300-frame (12.5 s) loop is computed in one pass per frame, in layers:
 
 1. The pour: the kettle lifts and pours a timed stream into the glass, then lowers; the glass rises
@@ -65,7 +65,6 @@ model.reuse_materials()
 CHAI = material('Masala_chai', (.50, .23, .085), .2)
 GLASS = material('Clear_glass', (.45, .57, .62), .10, alpha=.14)
 STEAM = material('Chai_aroma', (.63, .59, .54), .9, alpha=.18)
-ENGRAVE = material('Engraved_lettering', (.075, .040, .014), .45, .4)
 MOUTH = material('Mouth_interior', (.085, .010, .007), .8)
 model.new_mesh()
 
@@ -82,7 +81,7 @@ for i in range(4):
 tube([KETTLE + Vector((.079, .012, .035)), KETTLE + Vector((.069, -.024, .005)), KETTLE + Vector((.036, -.039, -.011))],
      [.024, .022, .012], LEATHER, hand, sides=12, sub=3)
 
-# -------------------- golden brass chai kettle with a decorative cartouche
+# -------------------- golden brass chai kettle with a Chaiiwala logo plaque
 body = KETTLE + Vector((0, 0, -.31))
 lathe(body, [(-.14, .105), (-.13, .14), (-.105, .164), (.07, .17), (.105, .155), (.12, .125), (.125, .10)],
       BRASS, 'kettle', sides=56)
@@ -102,18 +101,18 @@ grip = [KETTLE + Vector((.16 * math.cos(a), 0, -.18 + .18 * math.sin(a))) for a 
 tube(grip, [.015] * 17, LEATHER, 'kettle', sides=10, sub=1)
 for sign in (-1, 1):
     ellipsoid(KETTLE + Vector((sign * .16, 0, -.18)), (.014, .017, .020), GOLD, 'kettle', seg=16, rings=10)
-CW, CH = .125, .078  # cartouche half-width (along the kettle's curve) and half-height
+CW, CH = .132, .043  # logo plaque half-width (along the kettle's curve) and half-height
 for z in (-.085, .052):
     for k in range(12):
         a = math.pi + math.pi * k / 11
         if abs(.166 * (a - 1.5 * math.pi)) < CW + .014:
-            continue  # leave room for the cartouche
+            continue  # leave room for the plaque
         c = body + Vector((.166 * math.cos(a), .166 * math.sin(a), z))
         tangent = Vector((-math.sin(a), math.cos(a), 0))
         points = [c + tangent * (j - .5) * .018 + Vector((0, 0, .006 * math.sin(j * TAU))) for j in (0, .25, .5, .75, 1)]
         tube(points, [.0012] * 5, GOLD, 'kettle', sides=4, sub=1)
-# Raised oval cartouche with a beaded border, a kettle-and-glass emblem and "Chaiiwala / of London"
-# lettering. Everything is modelled flat on the plane y = -R0 and then wrapped onto the kettle's curve.
+# The plaque faces the viewer. It is modelled flat on the plane y = -R0 and then wrapped onto the
+# kettle's curve.
 R0 = .168
 def kettle_radius(z):
     return float(np.interp(z, (-.105, .07), (.164, .17)))
@@ -127,53 +126,77 @@ def wrapped(build):
         d, a = radius + (-rel.y - R0), -math.pi / 2 + rel.x / radius
         v.co = body + Vector((d * math.cos(a), d * math.sin(a), rel.z))
 
-def lettering(text, width, center, shear=0, depth=.0012):
-    """Raised text from Blender's built-in font, scaled to `width` and centred on `center`."""
-    curve = bpy.data.curves.new('lettering', 'FONT')
-    curve.body = text; curve.align_x = 'CENTER'; curve.align_y = 'CENTER'; curve.shear = shear
-    ob = bpy.data.objects.new('lettering', curve); scene.collection.objects.link(ob)
-    def evaluate():
-        bpy.context.view_layer.update()
-        return bpy.data.meshes.new_from_object(ob.evaluated_get(bpy.context.evaluated_depsgraph_get()))
-    flat = evaluate()
-    xs = [v.co.x for v in flat.vertices]
-    scale = width / (max(xs) - min(xs))
-    bpy.data.meshes.remove(flat)
-    curve.size = scale; curve.extrude = depth / 2
-    mesh_data = evaluate()
-    bpy.data.objects.remove(ob); bpy.data.curves.remove(curve)
-    verts = [model.bm.verts.new(center + Vector((v.co.x, -(v.co.z + depth / 2), v.co.y))) for v in mesh_data.vertices]
-    for poly in mesh_data.polygons:
-        try:
-            uv_face([verts[i] for i in poly.vertices], [(0, 0)] * len(poly.vertices))
-        except ValueError:
-            pass
-    bpy.data.meshes.remove(mesh_data)
-    finish(verts, ENGRAVE, 'kettle')
+def logo_plaque():
+    """A polished brass plaque printed with the Chaiiwala logo in black, framed by a gold rim."""
+    source = bpy.data.images.load(str(kit.ROOT / 'photos' / 'chaiiwala_logo_black.png'))
+    w, h = source.size
+    px = np.empty(w * h * 4, dtype=np.float32)
+    source.pixels.foreach_get(px)
+    bpy.data.images.remove(source)
+    px = px.reshape(h, w, 4)
+    if px[:, :, 3].min() < .99:
+        ink = px[:, :, 3]
+    else:  # opaque artwork: dark marks on a pale ground (or the reverse)
+        luma = px[:, :, :3] @ np.array([.2126, .7152, .0722])
+        paper, dark = np.percentile(luma, 90), np.percentile(luma, .5)
+        ink = np.clip((paper - luma) / (paper - dark), 0, 1)
+    rows, cols = np.nonzero(ink > .05)
+    ink = ink[rows.min():rows.max() + 1, cols.min():cols.max() + 1]
+    # Pad to the plaque's proportions so the artwork keeps its own aspect ratio.
+    pad_h = round(ink.shape[0] * .16)
+    height = ink.shape[0] + 2 * pad_h
+    width = round(height * CW / CH)
+    pad_w = (width - ink.shape[1]) // 2
+    assert pad_w > 0, 'the logo is wider than the plaque'
+    canvas = np.zeros((height, width), dtype=np.float32)
+    canvas[pad_h:pad_h + ink.shape[0], pad_w:pad_w + ink.shape[1]] = ink
+    canvas = canvas[:height // 2 * 2, :width // 2 * 2]
+    canvas = canvas.reshape(canvas.shape[0] // 2, 2, canvas.shape[1] // 2, 2).mean((1, 3))[:, :, None]
+    plate_color, plate_rough = np.array((.80, .58, .22)), .24
+    # Jet-black ink. A plain (non-metal) black still reflects about 4% of the gold kettle and red coat
+    # around it and reads brown; as a near-zero-reflectance metal it stays a neutral black in every viewer.
+    ink_color, ink_rough = np.array((.006, .006, .006)), .5
+    name = model.material('Chaiiwala logo', tuple(plate_color), plate_rough, 1)
+    mat = bpy.data.materials[name]
+    nodes, links = mat.node_tree.nodes, mat.node_tree.links
+    bsdf = nodes['Principled BSDF']
+    color = nodes.new('ShaderNodeTexImage')
+    color.image = kit.image(name + ' print', kit.to_srgb(plate_color * (1 - canvas) + ink_color * canvas))
+    links.new(color.outputs['Color'], bsdf.inputs['Base Color'])
+    orm = np.concatenate([np.ones_like(canvas), plate_rough * (1 - canvas) + ink_rough * canvas, np.ones_like(canvas)], axis=2)
+    surface = nodes.new('ShaderNodeTexImage')
+    surface.image = kit.image(name + ' surface', orm)
+    surface.image.colorspace_settings.name = 'Non-Color'
+    separate = nodes.new('ShaderNodeSeparateColor')
+    links.new(surface.outputs['Color'], separate.inputs['Color'])
+    links.new(separate.outputs['Green'], bsdf.inputs['Roughness'])
+    links.new(separate.outputs['Blue'], bsdf.inputs['Metallic'])
 
-cart = body + Vector((0, -R0, -.012))
-face_y = -.0050
-wrapped(lambda: ellipsoid(cart, (CW, .005, CH), BRASS, 'kettle', seg=48, rings=16))
-wrapped(lambda: torus(cart + Vector((0, face_y, 0)), (0, 1, 0), CW, .0040, GOLD, 'kettle', sides=64, cross=6, depth=CH))
-def beads():
-    for k in range(40):
-        a = TAU * k / 40
-        ellipsoid(cart + Vector(((CW - .011) * math.cos(a), face_y - .0015, (CH - .010) * math.sin(a))),
-                  (.0026, .0019, .0026), GOLD, 'kettle', seg=8, rings=5)
-wrapped(beads)
-def emblem():
-    # A tiny kettle pouring into a cutting-chai glass, drawn as raised wire lines.
-    c = cart + Vector((-.010, face_y - .0008, .036))
-    line = lambda pts, r=.0018: tube([c + Vector((px * 2.0, 0, pz * 2.0)) for px, pz in pts], [r] * len(pts), ENGRAVE, 'kettle', sides=6, sub=1)
-    ring = [(-.010 + .0085 * math.cos(TAU * k / 16), .0075 * math.sin(TAU * k / 16)) for k in range(17)]
-    line(ring)
-    line([(-.010 + .0085 * math.cos(math.pi * k / 8), .0075 + .006 * math.sin(math.pi * k / 8)) for k in range(9)])
-    line([(-.002, -.002), (.006, .002), (.010, .007)])
-    line([(.012, -.009), (.020, -.009), (.022, .004), (.010, .004), (.012, -.009)])
-lettering_center = cart + Vector((0, face_y, 0))
-wrapped(emblem)
-wrapped(lambda: lettering('Chaiiwala', .190, lettering_center + Vector((0, 0, -.008)), shear=.22, depth=.0022))
-wrapped(lambda: lettering('of London', .088, lettering_center + Vector((0, 0, -.050)), shear=.15, depth=.0018))
+    plate = body + Vector((0, -R0 - .0035, -.012))
+    def print_face():
+        columns, rows_ = 48, 10
+        verts = [[model.bm.verts.new(plate + Vector(((i / columns - .5) * 2 * CW, 0, (j / rows_ - .5) * 2 * CH)))
+                  for i in range(columns + 1)] for j in range(rows_ + 1)]
+        for j in range(rows_):
+            for i in range(columns):
+                uv_face([verts[j][i], verts[j][i + 1], verts[j + 1][i + 1], verts[j + 1][i]],
+                        [(i / columns, j / rows_), ((i + 1) / columns, j / rows_),
+                         ((i + 1) / columns, (j + 1) / rows_), (i / columns, (j + 1) / rows_)])
+        finish([v for row in verts for v in row], name, 'kettle')
+    wrapped(print_face)
+    # A gold rim around the print, reaching down to the kettle so the plaque's edge is closed.
+    corners = [(-CW, -CH), (CW, -CH), (CW, CH), (-CW, CH), (-CW, -CH)]
+    def rim():
+        for (x0, z0), (x1, z1) in zip(corners, corners[1:]):
+            steps = max(2, round(abs(x1 - x0 + z1 - z0) / .01))
+            points = [plate + Vector((x0 + (x1 - x0) * t / steps, -.0004, z0 + (z1 - z0) * t / steps)) for t in range(steps + 1)]
+            tube(points, [.0042] * len(points), GOLD, 'kettle', sides=8, sub=1)
+        for x, z in corners[:4]:
+            ellipsoid(plate + Vector((x, -.0004, z)), (.0058, .0058, .0058), GOLD, 'kettle', seg=12, rings=8)
+    wrapped(rim)
+
+
+logo_plaque()
 
 # -------------------- cutting-chai glass, rising chai level and timed stream
 profile = [(-.09, .045), (-.085, .05), (.078, .066), (.09, .066), (.09, .062), (.078, .062), (-.078, .047), (-.08, .006)]
