@@ -21,7 +21,7 @@ The exporter also writes `santaNN-android.glb` with `scene_viewer_glb.py`: the s
 
 | Edition | Triangles (scene → export) | GLB | USDZ |
 | --- | --- | --- | --- |
-| Santa 01 | 136k → 101k | 4.3 MB | 3.5 MB |
+| Santa 01 | 138k → 103k | 4.4 MB | 3.6 MB |
 | Santa 02 | 152k → 118k | 4.8 MB | 6.0 MB |
 | Santa 03 | 271k → 186k | 8.4 MB | 10.3 MB |
 | Santa 04 | 173k → 138k | 6.5 MB | 7.6 MB |
@@ -66,7 +66,7 @@ Modelled on the Santa 01 reference photo (`photos/01 Chaiiwala Santa.jpg`):
 
 ## Santa 01
 
-`build_santa01.py` adds a golden brass kettle in the right glove (its own kettle grip replaces the base's cupped right glove) and a cutting-chai glass in the cupped left glove. The kettle's front carries a polished brass plaque with a gold rim, printed with the Chaiiwala logo (`photos/chaiiwala_logo_black.png`) at its own aspect ratio and wrapped to the kettle's curve. The ink is a near-zero-reflectance metal, so it stays a neutral black instead of picking up the brass and the red coat.
+`build_santa01.py` adds a golden brass kettle in the right glove (its own kettle grip replaces the base's cupped right glove) and a cutting-chai glass in the cupped left glove. The kettle's front carries a white enamel plaque printed with the black Chaiiwala logo (`photos/chaiiwala_logo_black.png`) and wrapped to the kettle's curve. Its outline is a band with notched corners, an arched crest top and bottom and a pointed tip at each end, trimmed with a rolled gold rim, a fine inner gold line and gold beads. The ink is a near-zero-reflectance metal, so it stays a neutral black instead of picking up the brass and the red coat.
 
 The 12.5-second loop (`Santa01_Natural_Shoulders_Drink_Cup_Tilt`) is computed in one pass per frame, in layers:
 

@@ -101,7 +101,14 @@ grip = [KETTLE + Vector((.16 * math.cos(a), 0, -.18 + .18 * math.sin(a))) for a 
 tube(grip, [.015] * 17, LEATHER, 'kettle', sides=10, sub=1)
 for sign in (-1, 1):
     ellipsoid(KETTLE + Vector((sign * .16, 0, -.18)), (.014, .017, .020), GOLD, 'kettle', seg=16, rings=10)
-CW, CH = .132, .043  # logo plaque half-width (along the kettle's curve) and half-height
+# The logo plaque's outline, in metres from its centre (x along the kettle's curve, z up): a band
+# with concave notched corners, an arched crest top and bottom and a pointed tip at each end.
+PLAQUE_A, PLAQUE_B = .122, .046  # half-width and half-height of the band
+CREST, CREST_SPAN = .012, .055  # how far the crest rises above the band, and its half-width
+TIP, TIP_SPAN = .020, .032  # how far each end's point reaches past the band, and its half-height
+NOTCH = .014  # radius of the circular notch cut from each corner
+LOGO_WIDTH = .205
+CW = PLAQUE_A + TIP  # half-width of the whole plaque, kept clear of the scrollwork
 for z in (-.085, .052):
     for k in range(12):
         a = math.pi + math.pi * k / 11
@@ -126,8 +133,39 @@ def wrapped(build):
         d, a = radius + (-rel.y - R0), -math.pi / 2 + rel.x / radius
         v.co = body + Vector((d * math.cos(a), d * math.sin(a), rel.z))
 
+def plaque_inside(x, z, inset=0.0):
+    """Whether (x, z) lies inside the plaque outline, shrunk by roughly `inset`."""
+    X, Z = abs(x), abs(z)
+    top = PLAQUE_B - inset + (CREST * math.cos(math.pi * X / (2 * CREST_SPAN)) ** 2 if X < CREST_SPAN else 0)
+    side = PLAQUE_A - inset + (TIP * (1 - Z / TIP_SPAN) ** 2 if Z < TIP_SPAN else 0)
+    notch = (PLAQUE_A - X) ** 2 + (PLAQUE_B - Z) ** 2 >= (NOTCH + inset) ** 2
+    return Z <= top and X <= side and notch
+
+
+def plaque_outline(inset=0.0):
+    """The outline as points running anticlockwise from the right-hand tip, thinned on straight runs."""
+    traced = []
+    for i in range(720):
+        t = TAU * i / 720
+        dx, dz = math.cos(t), math.sin(t)
+        r = 0.0
+        while plaque_inside(r * dx, r * dz, inset):
+            r += .001
+        lo, hi = r - .001, r
+        for _ in range(24):
+            mid = (lo + hi) / 2
+            lo, hi = (mid, hi) if plaque_inside(mid * dx, mid * dz, inset) else (lo, mid)
+        traced.append(Vector((lo * dx, lo * dz)))
+    kept = [traced[0]]
+    for i, p in enumerate(traced[1:-1], 1):
+        before, after = (p - kept[-1]).normalized(), (traced[i + 1] - p).normalized()
+        if (p - kept[-1]).length > .008 or before.angle(after, 0) > math.radians(5):
+            kept.append(p)
+    return kept
+
+
 def logo_plaque():
-    """A polished brass plaque printed with the Chaiiwala logo in black, framed by a gold rim."""
+    """A shaped white enamel plaque printed with the Chaiiwala logo in black, with gold rims and beads."""
     source = bpy.data.images.load(str(kit.ROOT / 'photos' / 'chaiiwala_logo_black.png'))
     w, h = source.size
     px = np.empty(w * h * 4, dtype=np.float32)
@@ -142,28 +180,27 @@ def logo_plaque():
         ink = np.clip((paper - luma) / (paper - dark), 0, 1)
     rows, cols = np.nonzero(ink > .05)
     ink = ink[rows.min():rows.max() + 1, cols.min():cols.max() + 1]
-    # Pad to the plaque's proportions so the artwork keeps its own aspect ratio.
-    pad_h = round(ink.shape[0] * .16)
-    height = ink.shape[0] + 2 * pad_h
-    width = round(height * CW / CH)
-    pad_w = (width - ink.shape[1]) // 2
-    assert pad_w > 0, 'the logo is wider than the plaque'
+    # The print covers the plaque's bounding box, with the logo LOGO_WIDTH wide in the middle.
+    half_u, half_v = PLAQUE_A + TIP, PLAQUE_B + CREST
+    per_metre = ink.shape[1] / LOGO_WIDTH
+    width, height = round(2 * half_u * per_metre) // 2 * 2, round(2 * half_v * per_metre) // 2 * 2
+    top, left = (height - ink.shape[0]) // 2, (width - ink.shape[1]) // 2
     canvas = np.zeros((height, width), dtype=np.float32)
-    canvas[pad_h:pad_h + ink.shape[0], pad_w:pad_w + ink.shape[1]] = ink
-    canvas = canvas[:height // 2 * 2, :width // 2 * 2]
-    canvas = canvas.reshape(canvas.shape[0] // 2, 2, canvas.shape[1] // 2, 2).mean((1, 3))[:, :, None]
-    plate_color, plate_rough = np.array((.80, .58, .22)), .24
+    canvas[top:top + ink.shape[0], left:left + ink.shape[1]] = ink
+    canvas = canvas.reshape(height // 2, 2, width // 2, 2).mean((1, 3))[:, :, None]
+    plate_color, plate_rough, plate_metal = np.array((.82, .81, .78)), .3, 0  # white enamel
     # Jet-black ink. A plain (non-metal) black still reflects about 4% of the gold kettle and red coat
     # around it and reads brown; as a near-zero-reflectance metal it stays a neutral black in every viewer.
     ink_color, ink_rough = np.array((.006, .006, .006)), .5
-    name = model.material('Chaiiwala logo', tuple(plate_color), plate_rough, 1)
+    name = model.material('Chaiiwala logo', tuple(plate_color), plate_rough, plate_metal)
     mat = bpy.data.materials[name]
     nodes, links = mat.node_tree.nodes, mat.node_tree.links
     bsdf = nodes['Principled BSDF']
     color = nodes.new('ShaderNodeTexImage')
     color.image = kit.image(name + ' print', kit.to_srgb(plate_color * (1 - canvas) + ink_color * canvas))
     links.new(color.outputs['Color'], bsdf.inputs['Base Color'])
-    orm = np.concatenate([np.ones_like(canvas), plate_rough * (1 - canvas) + ink_rough * canvas, np.ones_like(canvas)], axis=2)
+    orm = np.concatenate([np.ones_like(canvas), plate_rough * (1 - canvas) + ink_rough * canvas,
+                          plate_metal * (1 - canvas) + canvas], axis=2)
     surface = nodes.new('ShaderNodeTexImage')
     surface.image = kit.image(name + ' surface', orm)
     surface.image.colorspace_settings.name = 'Non-Color'
@@ -172,28 +209,43 @@ def logo_plaque():
     links.new(separate.outputs['Green'], bsdf.inputs['Roughness'])
     links.new(separate.outputs['Blue'], bsdf.inputs['Metallic'])
 
-    plate = body + Vector((0, -R0 - .0035, -.012))
-    def print_face():
-        columns, rows_ = 48, 10
-        verts = [[model.bm.verts.new(plate + Vector(((i / columns - .5) * 2 * CW, 0, (j / rows_ - .5) * 2 * CH)))
-                  for i in range(columns + 1)] for j in range(rows_ + 1)]
-        for j in range(rows_):
-            for i in range(columns):
-                uv_face([verts[j][i], verts[j][i + 1], verts[j + 1][i + 1], verts[j + 1][i]],
-                        [(i / columns, j / rows_), ((i + 1) / columns, j / rows_),
-                         ((i + 1) / columns, (j + 1) / rows_), (i / columns, (j + 1) / rows_)])
-        finish([v for row in verts for v in row], name, 'kettle')
-    wrapped(print_face)
-    # A gold rim around the print, reaching down to the kettle so the plaque's edge is closed.
-    corners = [(-CW, -CH), (CW, -CH), (CW, CH), (-CW, CH), (-CW, -CH)]
-    def rim():
-        for (x0, z0), (x1, z1) in zip(corners, corners[1:]):
-            steps = max(2, round(abs(x1 - x0 + z1 - z0) / .01))
-            points = [plate + Vector((x0 + (x1 - x0) * t / steps, -.0004, z0 + (z1 - z0) * t / steps)) for t in range(steps + 1)]
-            tube(points, [.0042] * len(points), GOLD, 'kettle', sides=8, sub=1)
-        for x, z in corners[:4]:
-            ellipsoid(plate + Vector((x, -.0004, z)), (.0058, .0058, .0058), GOLD, 'kettle', seg=12, rings=8)
-    wrapped(rim)
+    plate = body + Vector((0, -R0 - .003, -.012))
+    outline = plaque_outline()
+
+    def at(p, lift=0.0):
+        return plate + Vector((p.x, -lift, p.y))
+
+    def enamel():
+        # Rings shrinking toward the centre, so the face bends smoothly round the kettle.
+        rings_ = [[model.bm.verts.new(at(p * (k / 4))) for p in outline] for k in range(1, 5)]
+        centre = model.bm.verts.new(at(Vector((0, 0))))
+        uv = lambda p: ((p.x + half_u) / (2 * half_u), (p.y + half_v) / (2 * half_v))
+        n = len(outline)
+        for i in range(n):
+            a, b = outline[i], outline[(i + 1) % n]
+            uv_face([centre, rings_[0][i], rings_[0][(i + 1) % n]], [uv(Vector((0, 0))), uv(a / 4), uv(b / 4)])
+            for k in range(3):
+                uv_face([rings_[k][i], rings_[k + 1][i], rings_[k + 1][(i + 1) % n], rings_[k][(i + 1) % n]],
+                        [uv(a * (k + 1) / 4), uv(a * (k + 2) / 4), uv(b * (k + 2) / 4), uv(b * (k + 1) / 4)])
+        finish([centre] + [v for ring in rings_ for v in ring], name, 'kettle')
+    wrapped(enamel)
+
+    def gilding():
+        # A rolled rim that reaches down to the kettle and closes the plaque's edge.
+        tube([at(p, .0004) for p in outline + outline[:1]], [.0042] * (len(outline) + 1), GOLD, 'kettle', sides=8, sub=1)
+        # A fine inner line following the outline.
+        inner = plaque_outline(.0075)
+        tube([at(p, .0006) for p in inner + inner[:1]], [.0011] * (len(inner) + 1), GOLD, 'kettle', sides=5, sub=1,
+             cap=False)
+        # Beads on the end tips and the crests, and a smaller one sitting on the kettle in each notch.
+        for x, z, r in ((PLAQUE_A + TIP, 0, .0068), (-PLAQUE_A - TIP, 0, .0068),
+                        (0, PLAQUE_B + CREST, .0056), (0, -PLAQUE_B - CREST, .0056)):
+            ellipsoid(at(Vector((x, z)), .0004), (r, r * .8, r), GOLD, 'kettle', seg=14, rings=9)
+        for sx in (-1, 1):
+            for sz in (-1, 1):
+                ellipsoid(at(Vector((sx * PLAQUE_A, sz * PLAQUE_B)), -.0015), (.0038, .0035, .0038), GOLD, 'kettle',
+                          seg=12, rings=8)
+    wrapped(gilding)
 
 
 logo_plaque()
