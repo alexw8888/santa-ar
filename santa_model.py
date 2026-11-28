@@ -2,7 +2,7 @@
 
 build_santa_base.py calls `begin`, `character_materials`, `new_mesh`, `character` and `objects` to
 make santa_base.blend: the body, face, beard, clothes and two cupped gloves, with no props.
-build_santa01.py reuses the materials and the bmesh helpers below to model its kettle and glass.
+build_santa01.py reuses the materials and the bmesh helpers below to model its kettle and teacup.
 
 Geometry is built in one bmesh (`bm`) whose deform layer holds the skin weights, keyed by the bone
 indices in GROUPS. Colours are linear; texture maps are converted to sRGB when written.
@@ -616,7 +616,7 @@ def character():
         # pushed up over the bottom of the iris.
         white_center, white_radii = (sign * .066, -.117, 1.788), (.037, .021, .034)
         ellipsoid(white_center, white_radii, WHITE, seg=28, rings=18)
-        # Irises are modelled looking straight ahead; their eye bones aim them at the glass each frame.
+        # Irises are modelled looking straight ahead; their eye bones aim them at a target each frame.
         eye = 'eye.L' if sign > 0 else 'eye.R'
         ellipsoid((sign * .062, -.135, 1.789), (.020, .009, .023), IRIS, eye, seg=24, rings=14)
         ellipsoid((sign * .062, -.142, 1.790), (.010, .004, .012), BLACK, eye, seg=20, rings=12)

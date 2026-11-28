@@ -43,21 +43,34 @@ mouth_index=next(i for i,m in enumerate(mesh.data.materials) if m.name=='Mouth_i
 assert not any(p.material_index==mouth_index and any(g.group==head_group and g.weight>.99 for g in mesh.data.vertices[p.vertices[0]].groups) for p in mesh.data.polygons)
 
 originals={name: rig.data.bones[name].matrix_local.inverted() for name in ('cup','kettle','hand.L','hand.R','stream')}
+# A full cup's chai surface is where the steam's bone starts; the chai rises from the liquid bone's head.
+full=rig.data.bones['aroma'].head_local.copy()
+bottom=rig.data.bones['liquid'].head_local.copy()
 
 def transformed(name, point):
     return rig.pose.bones[name].matrix @ originals[name] @ Vector(point)
 
 # Each glove holds its prop rigidly, the arms stay jointed and the shoulders ride the swaying chest.
+grips = (('L', 'cup', (.4516, -.4583, 1.1325)), ('R', 'kettle', (-.44, -.32, 1.55)))
+for side, _, grip_wrist in grips:
+    hand = rig.data.bones['hand.' + side]
+    forearm = rig.data.bones['forearm.' + side]
+    assert (hand.head_local - Vector(grip_wrist)).length < 1e-4, (side, 'default pose misses the grip')
+    assert (forearm.tail_local - hand.head_local).length < 1e-4, (side, 'default pose has a wrist gap')
 loop=[]
 levels, tilts, steam, stream_miss = {}, {}, {}, 0
 for frame in range(1,301):
     scene.frame_set(frame)
     chest=rig.pose.bones['chest']
     chest_deform=chest.matrix @ chest.bone.matrix_local.inverted()
-    for side,prop,bind_wrist in (('L','cup',(.31,-.44,1.12)),('R','kettle',(-.44,-.32,1.55))):
-        expected=transformed(prop,bind_wrist)
-        hand=rig.pose.bones['hand.'+side]
-        assert (hand.head-expected).length < 1e-4, (frame, side, 'hand detached')
+    for side, prop, grip_wrist in grips:
+        hand_name = 'hand.' + side
+        hand = rig.pose.bones[hand_name]
+        prop_deform = rig.pose.bones[prop].matrix @ originals[prop]
+        hand_deform = hand.matrix @ originals[hand_name]
+        assert (hand.head - prop_deform @ Vector(grip_wrist)).length < 1e-4, (frame, side, 'hand detached')
+        assert max(abs(hand_deform[i][j] - prop_deform[i][j]) for i in range(3) for j in range(3)) < 1e-4, (
+            frame, side, 'hand rotated off the grip')
         upper,fore = (rig.pose.bones[n+'.'+side] for n in ('upper_arm','forearm'))
         assert (upper.tail-fore.head).length < 1e-4, (frame,side,'elbow gap')
         assert (fore.tail-hand.head).length < 1e-4, (frame,side,'wrist gap')
@@ -72,35 +85,35 @@ for frame in range(1,301):
         spout=transformed('kettle',(0,-.412,1.37))
         assert (spout-rig.pose.bones['stream'].head).length < 1e-4, (frame,'stream detached from spout')
         # The stream ends at the chai surface.
-        endpoint=transformed('stream',(.15,-.48,1.168))
-        surface=transformed('cup',(.15,-.48,1.045+.127*level))
+        endpoint=transformed('stream',full)
+        surface=transformed('cup',bottom.lerp(full,level))
         stream_miss=max(stream_miss,abs(endpoint.z-surface.z))
     if frame in (1,300): loop.append([pb.matrix.copy() for pb in rig.pose.bones])
 assert max(abs(a[i][j]-b[i][j]) for a,b in zip(*loop) for i in range(4) for j in range(4)) < 1e-4, 'Loop does not close'
 assert stream_miss < .001, ('Stream misses the chai surface', stream_miss)
-# The glass starts and ends empty, fills while poured, and drains while he sips with it tipped to his lips.
-assert levels[1] < .002 and levels[300] < .002, 'Glass should be empty at the loop boundary'
-assert all(levels[f] > .999 for f in range(128, 218)), 'Glass should be full after the pour'
+# The cup starts and ends empty, fills while poured, and drains while he sips with it tipped to his lips.
+assert levels[1] < .002 and levels[300] < .002, 'Cup should be empty at the loop boundary'
+assert all(levels[f] > .999 for f in range(128, 218)), 'Cup should be full after the pour'
 assert levels[248] < .002, 'Chai should be gone after the sip'
 assert all(levels[f] >= levels[f+1] - 1e-6 for f in range(217, 248)), 'Chai should drain steadily'
-assert 16 < max(tilts.values()) < 19, ('Glass should tip about 17 degrees (plus a little body sway)', max(tilts.values()))
-assert max(tilts[f] for f in list(range(1, 210)) + list(range(260, 301))) < 2, 'Glass tips outside the sip'
+assert 16 < max(tilts.values()) < 19, ('Cup should tip about 17 degrees (plus a little body sway)', max(tilts.values()))
+assert max(tilts[f] for f in list(range(1, 210)) + list(range(260, 301))) < 2, 'Cup tips outside the sip'
 assert max(steam[f] for f in range(255, 301)) < .01, 'Steam should fade with the last sip'
-# The eyes track the glass: each gaze points closer to it than the face does, and it moves when the glass is raised.
+# The eyes track the cup: each gaze points closer to it than the face does, and it moves when the cup is raised.
 gazes={}
 for frame in (1,92,204):
     scene.frame_set(frame)
-    glass=rig.pose.bones['cup'].head+Vector((0,0,.06))
+    cup=transformed('cup',full)
     head=rig.pose.bones['head']
     face=(head.matrix.to_3x3() @ rig.data.bones['head'].matrix_local.to_3x3().inverted() @ Vector((0,-1,0))).normalized()
     for side in 'LR':
         eye=rig.pose.bones['eye.'+side]
         gaze=(eye.tail-eye.head).normalized()
-        to_glass=(glass-eye.head).normalized()
-        assert gaze.angle(to_glass) < face.angle(to_glass)-.1, (frame,side,'eye is not looking at the glass')
+        to_cup=(cup-eye.head).normalized()
+        assert gaze.angle(to_cup) < face.angle(to_cup)-.1, (frame,side,'eye is not looking at the cup')
         gazes[frame,side]=gaze
-assert all(gazes[1,s].angle(gazes[204,s]) > .15 for s in 'LR'), 'Eyes do not follow the raised glass'
-# Skinning itself must stay finite, including a nearly collapsed liquid stream and an empty glass.
+assert all(gazes[1,s].angle(gazes[204,s]) > .15 for s in 'LR'), 'Eyes do not follow the raised cup'
+# Skinning itself must stay finite, including a nearly collapsed liquid stream and an empty cup.
 for frame in (1,42,62,92,128,160,190,222,240,258,300):
     scene.frame_set(frame)
     evaluated=mesh.evaluated_get(bpy.context.evaluated_depsgraph_get())
@@ -148,12 +161,12 @@ with zipfile.ZipFile(path) as archive:
         assert item.compress_type==zipfile.ZIP_STORED
         name_len,extra_len=struct.unpack_from('<HH',data,item.header_offset+26)
         assert (item.header_offset+30+name_len+extra_len)%64==0
-# AR Quick Look needs real opacity on the glass, and front-facing mouth faces (it culls back faces).
+# AR Quick Look needs real opacity on the steam, and front-facing mouth faces (it culls back faces).
 from pxr import Usd, UsdShade
 stage = Usd.Stage.Open(str(path))
 opacity = {p.GetParent().GetName(): UsdShade.Shader(p).GetInput('opacity').Get()
            for p in stage.Traverse() if UsdShade.Shader(p) and UsdShade.Shader(p).GetInput('opacity')}
-assert opacity['Clear_glass'] < .5 and opacity['Chai_aroma'] < .5, ('Glass exports as opaque', opacity)
+assert opacity['Chai_aroma'] < .5, ('Steam exports as opaque', opacity)
 assert opacity['Laughing_mouth'] == 1
 del stage
 laugh = next(i for i, m in enumerate(mesh.data.materials) if m.name == 'Laughing_mouth')
