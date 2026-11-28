@@ -87,7 +87,7 @@ if 'convert_orientation' in props:
 bpy.ops.wm.usd_export(**{k: v for k, v in kwargs.items() if k in props})
 
 # -------- USDZ repackage. Blender's USD exporter writes every texture as PNG and every
-# UsdPreviewSurface as opaque, so glass and steam come out solid in AR Quick Look. Re-encode the
+# UsdPreviewSurface as opaque, so translucent steam comes out solid in AR Quick Look. Re-encode the
 # textures as JPEG at the target size, patch the materials' alpha in, and repackage the USDZ.
 import shutil, tempfile, zipfile
 from pxr import Sdf, Usd, UsdShade, UsdUtils

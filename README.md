@@ -6,7 +6,7 @@ The six Santa pages and the Scene Viewer test share the bundled `@google/model-v
 
 | Version | Public page | Animation |
 | --- | --- | --- |
-| Santa 01 | [Santa_Chaiiwala.html](https://alexw8888.github.io/santa-ar/Santa_Chaiiwala.html) | Pour chai from a brass kettle while watching the glass, then raise the glass to his lips and sip it empty |
+| Santa 01 | [Santa_Chaiiwala.html](https://alexw8888.github.io/santa-ar/Santa_Chaiiwala.html) | Pour chai from a brass kettle into an engraved brass teacup, then raise the cup to his lips and sip it empty |
 | Santa 02 | [Santa_Aisle24.html](https://alexw8888.github.io/santa-ar/Santa_Aisle24.html) | Lift an armful of Aisle24 groceries, glance down and settle them back into both hands |
 | Santa 03 | [Santa_Bouquet_Cafe.html](https://alexw8888.github.io/santa-ar/Santa_Bouquet_Cafe.html) | Hold a steaming Bouquet Café mug, raise a wrapped bouquet from his side and reach forward to offer it to the viewer at chest height, with the flowers tipped toward them, pausing so they can pose as if taking it |
 | Santa 04 | [Santa_Landmark.html](https://alexw8888.github.io/santa-ar/Santa_Landmark.html) | Lift and reach forward to offer a Landmark on Robson gift box as the Christmas tree lights flash |
@@ -76,16 +76,18 @@ Modelled on the Santa 01 reference photo (`photos/01 Chaiiwala Santa.jpg`):
 
 ## Santa 01
 
-`build_santa01.py` adds a golden brass kettle in the right glove (its own kettle grip replaces the base's cupped right glove) and a cutting-chai glass in the cupped left glove. The kettle's front carries a white enamel plaque printed with the black Chaiiwala logo (`photos/chaiiwala_logo_black.png`) and wrapped to the kettle's curve. Its outline is a band with notched corners, an arched crest top and bottom and a pointed tip at each end, trimmed with a rolled gold rim, a fine inner gold line and gold beads. The ink is a near-zero-reflectance metal, so it stays a neutral black instead of picking up the brass and the red coat.
+`build_santa01.py` adds a golden brass kettle in the right glove and an engraved brass teacup that the left glove holds by its handle; both gloves are modelled for their props and replace the base's cupped ones. The kettle's front carries a white enamel plaque printed with the black Chaiiwala logo (`photos/chaiiwala_logo_black.png`) and wrapped to the kettle's curve. Its outline is a band with notched corners, an arched crest top and bottom and a pointed tip at each end, trimmed with a rolled gold rim, a fine inner gold line and gold beads. The ink is a near-zero-reflectance metal, so it stays a neutral black instead of picking up the brass and the red coat.
+
+The teacup is polished brass with a rounded bowl on a short foot, a rolled lip, a plain band under the rim and an ear-shaped strap handle. Flowers and leaves are engraved round its lower body on a stippled ground, and a vine of small leaves runs along both faces of the handle. `santa_engraving.py` draws the engraving and turns it into colour, roughness and normal maps. The left glove sits beside the handle. The thumb rests on the upper bar, the index finger curls through the loop from the front, and the three lower fingers fold under it. As Santa raises the cup, the glove and handle turn together with his forearm (`RAISE_TURN`). The chai is a thin disc that follows the bowl's inner wall as it fills and drains.
 
 The 12.5-second loop (`Santa01_Natural_Shoulders_Drink_Cup_Tilt`) is computed in one pass per frame, in layers:
 
-1. The pour: the kettle lifts and pours a timed stream into the glass, then lowers; the glass rises toward his face; his head and eyes follow the glass. It is evaluated at an eased time, so each gesture eases in and out.
-2. The shared sway, with the kettle, stream and glass following the gloves that hold them.
-3. A subtle torso counterlean while the kettle is up: the kettle-side shoulder rises and the glass-side one drops, and the arms re-solve to the same wrists.
-4. The sip: the glass comes to his lips and tips about 17°, the left glove gripping it. The chai fills while it is poured (the stream always reaches its surface) and drains while he sips, so the glass is empty at both ends of the loop and playback wraps without a pop; the steam fades with the last sip.
+1. The pour: the kettle lifts and pours a timed stream into the cup, then lowers; the cup rises toward his face; his head and eyes follow the cup. It is evaluated at an eased time, so each gesture eases in and out.
+2. The shared sway, with the kettle, stream and cup following the gloves that hold them.
+3. A subtle torso counterlean while the kettle is up: the kettle-side shoulder rises and the cup-side one drops, and the arms re-solve to the same wrists.
+4. The sip: the cup comes to his lips and tips about 17°, the left glove holding it. The chai fills while it is poured (the stream always reaches its surface) and drains while he sips, so the cup is empty at both ends of the loop and playback wraps without a pop; the steam fades with the last sip.
 
-`previews/santa01-*.png` show the front view (also the poster), the pour and the sip, the face, the kettle's logo plaque and a fabric close-up. The test checks the rigid grips, arm joints, stream, chai level, the sip, the eyes following the glass, loop closure, and that the GLB, USDZ and `docs/Santa_Chaiiwala.html` agree.
+`previews/santa01-*.png` show the front view (also the poster), the pour and the sip, the face, the kettle's logo plaque and a fabric close-up. The test checks the rigid grips, arm joints, stream, chai level, the sip, the eyes following the cup, loop closure, and that the GLB, USDZ and `docs/Santa_Chaiiwala.html` agree.
 
 ## Santa 02
 

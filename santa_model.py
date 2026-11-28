@@ -2,7 +2,7 @@
 
 build_santa_base.py calls `begin`, `character_materials`, `new_mesh`, `character` and `objects` to
 make santa_base.blend: the body, face, beard, clothes and two cupped gloves, with no props.
-build_santa01.py reuses the materials and the bmesh helpers below to model its kettle and glass.
+build_santa01.py reuses the materials and the bmesh helpers below to model its kettle and teacup.
 
 Geometry is built in one bmesh (`bm`) whose deform layer holds the skin weights, keyed by the bone
 indices in GROUPS. Colours are linear; texture maps are converted to sRGB when written.
@@ -616,7 +616,7 @@ def character():
         # pushed up over the bottom of the iris.
         white_center, white_radii = (sign * .066, -.117, 1.788), (.037, .021, .034)
         ellipsoid(white_center, white_radii, WHITE, seg=28, rings=18)
-        # Irises are modelled looking straight ahead; their eye bones aim them at the glass each frame.
+        # Irises are modelled looking straight ahead; their eye bones aim them at a target each frame.
         eye = 'eye.L' if sign > 0 else 'eye.R'
         ellipsoid((sign * .062, -.135, 1.789), (.020, .009, .023), IRIS, eye, seg=24, rings=14)
         ellipsoid((sign * .062, -.142, 1.790), (.010, .004, .012), BLACK, eye, seg=20, rings=12)
@@ -686,7 +686,8 @@ def character():
     finish([v for ring in rings for v in ring] + [middle], LAUGH, 'head')
     teeth = [mouth_outline(t, .86) + Vector((0, .003, -.004)) for t in [math.pi * (.15 + .7 * k / 12) for k in range(13)]]
     tube(teeth, [.003] + [.0075] * 11 + [.003], TEETH, sides=10, sub=1, flat=.45)
-    ellipsoid((0, MY + .012, MC - .028), (.040, .011, .012), TONGUE, seg=24, rings=12)
+    # The tongue lies low and back in the mouth, so only its top shows above the lower lip.
+    ellipsoid((0, MY + .014, MC - .034), (.036, .011, .012), TONGUE, seg=24, rings=12)
 
     # A full, wide beard: shaped underlay plus layered, wavy, flattened locks.
     beard_z = [1.25, 1.28, 1.35, 1.42, 1.50, 1.57, 1.63, 1.70]
