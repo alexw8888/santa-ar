@@ -60,6 +60,7 @@ for side, _, grip_wrist in grips:
     assert (forearm.tail_local - hand.head_local).length < 1e-4, (side, 'default pose has a wrist gap')
 loop=[]
 levels, tilts, steam, cup_heights = {}, {}, {}, {}
+kettle_positions = {}
 stream_miss = 0
 for frame in range(1, last_frame + 1):
     scene.frame_set(frame)
@@ -83,6 +84,7 @@ for frame in range(1, last_frame + 1):
     cup_up=rig.pose.bones['cup'].matrix.to_3x3() @ Vector((0,1,0))
     tilts[frame]=math.degrees(cup_up.angle(Vector((0,0,1))))
     cup_heights[frame] = transformed('cup', full).z
+    kettle_positions[frame] = chest_deform.inverted() @ rig.pose.bones['kettle'].head
     steam[frame]=rig.pose.bones['aroma'].scale.y
     if rig.pose.bones['stream'].scale.x > .999:
         spout=transformed('kettle',(0,-.412,1.37))
@@ -94,6 +96,17 @@ for frame in range(1, last_frame + 1):
     if frame in (1, last_frame): loop.append([pb.matrix.copy() for pb in rig.pose.bones])
 assert max(abs(a[i][j]-b[i][j]) for a,b in zip(*loop) for i in range(4) for j in range(4)) < 1e-4, 'Loop does not close'
 assert stream_miss < .001, ('Stream misses the chai surface', stream_miss)
+# The kettle passes through its old upright pose at speed on the way to the pour and on the way back.
+kettle_rest = kettle_positions[1]
+pour_ready = rig.data.bones['kettle'].head_local
+assert kettle_rest.z < pour_ready.z - .2, 'Kettle should start visibly below its upright pour pose'
+for frames, direction in ((range(6, 60), 1), (range(133, 192), -1)):
+    frame = min(frames, key=lambda f: (kettle_positions[f] - pour_ready).length)
+    assert (kettle_positions[frame] - pour_ready).length < .015, (frame, 'Kettle misses the upright pour pose')
+    steps = [direction * (kettle_positions[f + 1].z - kettle_positions[f].z) for f in range(frame - 2, frame + 2)]
+    assert min(steps) > .008, (frame, 'Kettle slows down at the upright pose', steps)
+assert all((kettle_positions[f] - kettle_rest).length < 1e-4 for f in range(192, last_frame + 1)), (
+    'Kettle should return to its starting position and stay there through the sip')
 # The cup starts and ends empty, fills while poured, and drains while he sips with it tipped to his lips.
 assert levels[1] < .002 and levels[last_frame] < .002, 'Cup should be empty at the loop boundary'
 assert all(levels[f] > .999 for f in range(128, 218)), 'Cup should be full after the pour'

@@ -82,7 +82,7 @@ The teacup is polished brass with a rounded bowl on a short foot, a rolled lip, 
 
 The 328-frame loop (`Santa01_Natural_Shoulders_Drink_Cup_Tilt`) runs at 24 fps and combines five layers per frame.
 
-1. The pour: the kettle lifts and pours a timed stream into the cup, then lowers; the cup rises toward his face; his head and eyes follow the cup. It is evaluated at an eased time, so each gesture eases in and out.
+1. Santa lifts the kettle from belt height and tips it into the pour in one motion. He lowers it to belt height as he raises the cup toward his face, following the cup with his head and eyes.
 2. The shared sway, with the kettle, stream and cup following the gloves that hold them.
 3. A subtle torso counterlean while the kettle is up: the kettle-side shoulder rises and the cup-side one drops, and the arms re-solve to the same wrists.
 4. The sip: the cup comes to his lips and tips about 17°, the left glove holding it. The chai fills while it is poured (the stream always reaches its surface) and drains while he sips, so the cup is empty at both ends of the loop and playback wraps without a pop; the steam fades with the last sip.

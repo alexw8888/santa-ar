@@ -10,9 +10,9 @@ printed with the Chaiiwala logo in his right glove, its own kettle grip, and an 
 teacup that his left glove holds by its handle (both gloves replace the base's cupped ones). The
 328-frame loop runs at 24 fps and combines five layers per frame.
 
-1. The pour: the kettle lifts and pours a timed stream into the cup, then lowers; the cup rises
-   toward his face; arms solve from the shoulders; head and eyes follow the cup. It is evaluated
-   at an eased time, so each gesture eases in and out (EASE_STRENGTH).
+1. Santa lifts the kettle from his side, tips it to pour a timed stream into the cup, and lowers
+   it as he raises the cup toward his face. The arms solve from the shoulders, and the head and
+   eyes follow the cup. Each gesture eases in and out (EASE_STRENGTH).
 2. The shared secondary sway from santa_motion.py (body, coat, sleeves, hat tip, feet) at that
    eased time, with the kettle, stream and cup following the gloves that hold them.
 3. A subtle torso counterlean while the kettle is up: its shoulder rises and the cup shoulder
@@ -81,6 +81,7 @@ CUP_WRIST = CUP_BASE + .276 * OUT + .112 * SIDE + .081 * UP
 LIQUID_BOTTOM = CUP_BASE + BOTTOM * UP
 FILL_DEPTH = FULL - BOTTOM
 END = CUP_BASE + FULL * UP  # where the stream meets a full cup
+KETTLE_REST = KETTLE + Vector((0, -.07, -.28))  # bring the spout forward to clear the coat
 POUR_GRIP = Vector((-.18, -.49, 1.73)) + (CUP_BASE - CUP) * Vector((1, 1, 0))  # the spout above the cup
 POUR_ROT = Matrix.Rotation(math.radians(25), 3, 'Y')
 SPOUT_LOCAL = Vector((.44, -.012, -.16))
@@ -594,11 +595,18 @@ def eased_source(frame):
 
 def pour(s, frame):
     """Pose the pour and cup lift, then hold the cup through the nods and pause."""
-    kettle_amount = kit.ramp(s, 24, 60) * (1 - kit.ramp(s, 132, 168))
+    # Carry the lift through the upright pose, then ease into the reach and tilt as it keeps rising.
+    lift = window(frame, 5, 60, 132, 192)
+    kettle_height = KETTLE_REST.z + (POUR_GRIP.z - KETTLE_REST.z) * lift
+    # Keep the spout forward for the lower part of the lift so it clears the beard.
+    upright = ramp5(kettle_height, (KETTLE_REST.z + KETTLE.z) / 2, KETTLE.z)
+    above_upright = max(0.0, (kettle_height - KETTLE.z) / (POUR_GRIP.z - KETTLE.z))
+    pour_amount = above_upright ** 3
+    kpos = KETTLE_REST.lerp(KETTLE, upright).lerp(POUR_GRIP, pour_amount)
+    kpos.z = kettle_height
+    krot = Matrix.Rotation(math.radians(25) * pour_amount, 3, 'Y')
     sip_settle = SIP_SETTLE * ramp5(frame, 244, DRINK_FINISH)
     cup_amount = kit.ramp(s, 168, 204) * (1 - sip_settle) * (1 - ramp5(frame, *CUP_RETURN))
-    kpos = KETTLE.lerp(POUR_GRIP, kettle_amount)
-    krot = Matrix.Rotation(math.radians(25) * kettle_amount, 3, 'Y')
     cpos = CUP.lerp(Vector((.002, -.347, 1.590)), cup_amount)
     crot = Matrix.Rotation(math.radians(RAISE_TURN) * cup_amount, 3, 'Z')
     kit.rigid('kettle', kpos, krot)
@@ -624,7 +632,7 @@ def pour(s, frame):
     length = (STREAM_START.z - surface) / (STREAM_START.z - END.z)
     rig.pose.bones['stream'].scale = (max(.01, flow), max(.01, flow * length), max(.01, flow))
     bpy.context.view_layer.update()
-    return max(kettle_amount, cup_amount)
+    return max(pour_amount, cup_amount)
 
 
 def sway(s, activity):
@@ -739,11 +747,12 @@ def pose_at(t):
 kit.bake('Santa01_Natural_Shoulders_Drink_Cup_Tilt', FRAMES, pose_at, [b.name for b in rig.pose.bones], sway=False)
 
 FRONT = ((2.15, -6.3, 2.75), (-.035, -.12, 1.05), 82, (800, 1000))
+KETTLE_DETAIL = (KETTLE_REST + Vector((.08, -1.05, -.27)), KETTLE_REST + Vector((.01, -.12, -.32)), 85, (600, 600))
 kit.finish('santa01', FRONT, [
     ('front', 1, FRONT),
     ('pour', 92, FRONT),
     ('sip', 229, FRONT),
     ('face', 1, ((-.20, -1.60, 1.85), (0, -.04, 1.75), 78, (600, 600))),
-    ('kettle', 1, ((-.36, -1.45, 1.26), (-.43, -.52, 1.21), 85, (600, 600))),
+    ('kettle', 1, KETTLE_DETAIL),
     ('fabric', 229, ((.85, -1.35, 1.35), (.16, -.19, 1.18), 90, (700, 700))),
 ])
