@@ -6,7 +6,7 @@ The six Santa pages and the Scene Viewer test share the bundled `@google/model-v
 
 | Version | Public page | Animation |
 | --- | --- | --- |
-| Santa 01 | [Santa_Chaiiwala.html](https://alexw8888.github.io/santa-ar/Santa_Chaiiwala.html) | Pour chai from a brass kettle into an engraved brass teacup, then raise the cup to his lips and sip it empty |
+| Santa 01 | [Santa_Chaiiwala.html](https://alexw8888.github.io/santa-ar/Santa_Chaiiwala.html) | Pour chai from a brass kettle into an engraved brass teacup, sip it empty, nod twice, and pause before lowering the cup |
 | Santa 02 | [Santa_Aisle24.html](https://alexw8888.github.io/santa-ar/Santa_Aisle24.html) | Lift an armful of Aisle24 groceries, glance down and settle them back into both hands |
 | Santa 03 | [Santa_Bouquet_Cafe.html](https://alexw8888.github.io/santa-ar/Santa_Bouquet_Cafe.html) | Hold a steaming Bouquet Café mug, raise a wrapped bouquet from his side and reach forward to offer it to the viewer at chest height, with the flowers tipped toward them, pausing so they can pose as if taking it |
 | Santa 04 | [Santa_Landmark.html](https://alexw8888.github.io/santa-ar/Santa_Landmark.html) | Lift and reach forward to offer a Landmark on Robson gift box as the Christmas tree lights flash |
@@ -80,12 +80,13 @@ Modelled on the Santa 01 reference photo (`photos/01 Chaiiwala Santa.jpg`):
 
 The teacup is polished brass with a rounded bowl on a short foot, a rolled lip, a plain band under the rim and an ear-shaped strap handle. Flowers and leaves are engraved round its lower body on a stippled ground, and a vine of small leaves runs along both faces of the handle. `santa_engraving.py` draws the engraving and turns it into colour, roughness and normal maps. The left glove sits beside the handle. The thumb rests on the upper bar, the index finger curls through the loop from the front, and the three lower fingers fold under it. As Santa raises the cup, the glove and handle turn together with his forearm (`RAISE_TURN`). The chai is a thin disc that follows the bowl's inner wall as it fills and drains.
 
-The 12.5-second loop (`Santa01_Natural_Shoulders_Drink_Cup_Tilt`) is computed in one pass per frame, in layers:
+The 328-frame loop (`Santa01_Natural_Shoulders_Drink_Cup_Tilt`) runs at 24 fps and combines five layers per frame.
 
 1. The pour: the kettle lifts and pours a timed stream into the cup, then lowers; the cup rises toward his face; his head and eyes follow the cup. It is evaluated at an eased time, so each gesture eases in and out.
 2. The shared sway, with the kettle, stream and cup following the gloves that hold them.
 3. A subtle torso counterlean while the kettle is up: the kettle-side shoulder rises and the cup-side one drops, and the arms re-solve to the same wrists.
 4. The sip: the cup comes to his lips and tips about 17°, the left glove holding it. The chai fills while it is poured (the stream always reaches its surface) and drains while he sips, so the cup is empty at both ends of the loop and playback wraps without a pop; the steam fades with the last sip.
+5. Santa lowers the empty cup slightly to show his face during two approving nods. He pauses half a second, then lowers it the rest of the way.
 
 `previews/santa01-*.png` show the front view (also the poster), the pour and the sip, the face, the kettle's logo plaque and a fabric close-up. The test checks the rigid grips, arm joints, stream, chai level, the sip, the eyes following the cup, loop closure, and that the GLB, USDZ and `docs/Santa_Chaiiwala.html` agree.
 

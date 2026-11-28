@@ -35,7 +35,8 @@ assert max(cloth_u)-min(cloth_u)>3, 'Fabric UVs are stretched across the entire 
 assert rig.animation_data.action.name == 'Santa01_Natural_Shoulders_Drink_Cup_Tilt'
 assert [a.name for a in bpy.data.actions] == [rig.animation_data.action.name], 'Leftover actions'
 assert all(b in rig.data.bones for b in ('coat_hem', 'sleeve_sway.L', 'sleeve_sway.R', 'hat_tip'))
-assert scene.frame_start == 1 and scene.frame_end == 300
+last_frame = scene.frame_end
+assert scene.frame_start == 1 and last_frame == 328
 check_beard_clearance(scene, mesh)
 # The dark mouth-interior material is reserved for the kettle spout, never the face.
 head_group=mesh.vertex_groups['head'].index
@@ -58,8 +59,9 @@ for side, _, grip_wrist in grips:
     assert (hand.head_local - Vector(grip_wrist)).length < 1e-4, (side, 'default pose misses the grip')
     assert (forearm.tail_local - hand.head_local).length < 1e-4, (side, 'default pose has a wrist gap')
 loop=[]
-levels, tilts, steam, stream_miss = {}, {}, {}, 0
-for frame in range(1,301):
+levels, tilts, steam, cup_heights = {}, {}, {}, {}
+stream_miss = 0
+for frame in range(1, last_frame + 1):
     scene.frame_set(frame)
     chest=rig.pose.bones['chest']
     chest_deform=chest.matrix @ chest.bone.matrix_local.inverted()
@@ -80,6 +82,7 @@ for frame in range(1,301):
     assert -1e-4 <= level <= 1.0001, 'Chai overflow'
     cup_up=rig.pose.bones['cup'].matrix.to_3x3() @ Vector((0,1,0))
     tilts[frame]=math.degrees(cup_up.angle(Vector((0,0,1))))
+    cup_heights[frame] = transformed('cup', full).z
     steam[frame]=rig.pose.bones['aroma'].scale.y
     if rig.pose.bones['stream'].scale.x > .999:
         spout=transformed('kettle',(0,-.412,1.37))
@@ -88,20 +91,37 @@ for frame in range(1,301):
         endpoint=transformed('stream',full)
         surface=transformed('cup',bottom.lerp(full,level))
         stream_miss=max(stream_miss,abs(endpoint.z-surface.z))
-    if frame in (1,300): loop.append([pb.matrix.copy() for pb in rig.pose.bones])
+    if frame in (1, last_frame): loop.append([pb.matrix.copy() for pb in rig.pose.bones])
 assert max(abs(a[i][j]-b[i][j]) for a,b in zip(*loop) for i in range(4) for j in range(4)) < 1e-4, 'Loop does not close'
 assert stream_miss < .001, ('Stream misses the chai surface', stream_miss)
 # The cup starts and ends empty, fills while poured, and drains while he sips with it tipped to his lips.
-assert levels[1] < .002 and levels[300] < .002, 'Cup should be empty at the loop boundary'
+assert levels[1] < .002 and levels[last_frame] < .002, 'Cup should be empty at the loop boundary'
 assert all(levels[f] > .999 for f in range(128, 218)), 'Cup should be full after the pour'
 assert levels[248] < .002, 'Chai should be gone after the sip'
 assert all(levels[f] >= levels[f+1] - 1e-6 for f in range(217, 248)), 'Chai should drain steadily'
 assert 16 < max(tilts.values()) < 19, ('Cup should tip about 17 degrees (plus a little body sway)', max(tilts.values()))
-assert max(tilts[f] for f in list(range(1, 210)) + list(range(260, 301))) < 2, 'Cup tips outside the sip'
-assert max(steam[f] for f in range(255, 301)) < .01, 'Steam should fade with the last sip'
+assert max(tilts[f] for f in list(range(1, 210)) + list(range(260, last_frame + 1))) < 2, 'Cup tips outside the sip'
+assert max(steam[f] for f in range(255, last_frame + 1)) < .01, 'Steam should fade with the last sip'
+# Dip below the face before nodding, then hold the cup for half a second after both nods.
+assert .08 < cup_heights[248] - cup_heights[257] < .12, 'Cup should dip below the face before the first nod'
+hold_frames = range(257, 310)
+held_heights = [cup_heights[f] for f in hold_frames]
+assert max(held_heights) - min(held_heights) < .012, 'The cup moves vertically during the nods or pause'
+assert scene.render.fps / scene.render.fps_base == 24, 'The 12-frame pause should last half a second'
+assert cup_heights[315] < cup_heights[309] - .04, 'The cup should start lowering after the pause'
+assert cup_heights[327] < min(held_heights) - .25, 'The cup should return to its resting height'
+assert all(levels[f] < .002 and tilts[f] < 2 for f in hold_frames), 'Cup should be empty and upright through the pause'
+head = rig.pose.bones['head']
+approval_pitches = {}
+for frame in range(257, 298):
+    scene.frame_set(frame)
+    approval_pitches[frame] = math.degrees(head.rotation_quaternion.to_euler().x)
+for start, dip, finish in ((257, 266, 276), (278, 287, 297)):
+    depth = approval_pitches[dip] - max(approval_pitches[start], approval_pitches[finish])
+    assert 3.5 < depth < 7, (dip, 'Expected a subtle nod and recovery', depth)
+assert max(abs(approval_pitches[f + 1] - approval_pitches[f]) for f in range(257, 297)) < 1.5, 'The nods are too fast'
 # The eyes track the cup: each gaze points closer to it than the face does, and it moves when the cup is raised.
 gazes={}
-head = rig.pose.bones['head']
 head_rest_inverse = head.bone.matrix_local.inverted()
 for frame in (1,92,204):
     scene.frame_set(frame)
@@ -126,13 +146,13 @@ for frame in range(217, 249):
     convergence = math.degrees(yaws[1] - yaws[0])
     assert 0 < convergence < 15, (frame, 'sip gaze convergence', convergence)
 # Skinning itself must stay finite, including a nearly collapsed liquid stream and an empty cup.
-for frame in (1,42,62,92,128,160,190,222,240,258,300):
+for frame in (1, 42, 62, 92, 128, 160, 190, 222, 240, 266, 287, 303, 318, last_frame):
     scene.frame_set(frame)
     evaluated=mesh.evaluated_get(bpy.context.evaluated_depsgraph_get())
     data=evaluated.to_mesh()
     assert all(math.isfinite(c) for v in data.vertices for c in v.co)
     evaluated.to_mesh_clear()
-print(f'PASS: all 300 frames keep arm joints, rigid grips, stream on the spout (surface within {stream_miss*1000:.1f} mm), '
+print(f'PASS: all {last_frame} frames keep arm joints, rigid grips, stream on the spout (surface within {stream_miss*1000:.1f} mm), '
       f'the chai level, the {max(tilts.values()):.1f} degree sip and loop closure',flush=True)
 raw=(ROOT/'docs/santa01.glb').read_bytes()
 magic,version,length=struct.unpack_from('<4sII',raw)

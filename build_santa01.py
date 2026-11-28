@@ -8,7 +8,7 @@ previews and docs/santa01-poster.webp; name shots after the folder to render onl
 Santa 01 is modelled on photos/01 Chaiiwala Santa.jpg: a golden brass kettle with a plaque
 printed with the Chaiiwala logo in his right glove, its own kettle grip, and an engraved brass
 teacup that his left glove holds by its handle (both gloves replace the base's cupped ones). The
-300-frame (12.5 s) loop is computed in one pass per frame, in layers:
+328-frame loop runs at 24 fps and combines five layers per frame.
 
 1. The pour: the kettle lifts and pours a timed stream into the cup, then lowers; the cup rises
    toward his face; arms solve from the shoulders; head and eyes follow the cup. It is evaluated
@@ -20,6 +20,7 @@ teacup that his left glove holds by its handle (both gloves replace the base's c
 4. The sip: the cup comes to his lips and tips about 17 degrees, the left glove holding it. The
    chai fills while it is poured and drains while he sips, so the cup is empty at both ends of
    the loop, and the steam fades with the last sip.
+5. Santa dips the empty cup below his face, nods twice, then pauses half a second before lowering it.
 """
 import math
 import sys
@@ -547,7 +548,8 @@ print(f'[model] Santa01 has {len(santa.data.vertices):,} vertices, {len(santa.da
 
 
 # -------------------- the loop
-FRAMES = 300
+SOURCE_FRAMES = 300
+FRAMES = 328
 GAZE = END - CUP  # look at the chai surface, from the cup bone's origin
 SIP_EYE_CONVERGENCE = .5  # soften the inward turn as the cup comes close
 # Turn the raised cup with the forearm while keeping the broad side of the handle visible.
@@ -566,7 +568,7 @@ def ramp5(frame, a, b):
 # 1. Easing: each gesture window is retimed toward a quintic ease in/out. A pose the pour reaches
 # at time s appears at frame ease(s); `eased_source` inverts that for the frame being baked.
 EASE_STRENGTH = .5
-GESTURE_MARKERS = (1, 24, 60, 132, 168, 204, 240, 276, 300)
+GESTURE_MARKERS = (1, 24, 60, 132, 168, 204, 240, 276, SOURCE_FRAMES)
 
 
 def ease(u):
@@ -590,10 +592,11 @@ def eased_source(frame):
     return frame
 
 
-def pour(s):
-    """Layer 1 at (eased) source time s: approach, pour, lower kettle, raise cup, return."""
+def pour(s, frame):
+    """Pose the pour and cup lift, then hold the cup through the nods and pause."""
     kettle_amount = kit.ramp(s, 24, 60) * (1 - kit.ramp(s, 132, 168))
-    cup_amount = kit.ramp(s, 168, 204) * (1 - kit.ramp(s, 240, 276))
+    sip_settle = SIP_SETTLE * ramp5(frame, 244, DRINK_FINISH)
+    cup_amount = kit.ramp(s, 168, 204) * (1 - sip_settle) * (1 - ramp5(frame, *CUP_RETURN))
     kpos = KETTLE.lerp(POUR_GRIP, kettle_amount)
     krot = Matrix.Rotation(math.radians(25) * kettle_amount, 3, 'Y')
     cpos = CUP.lerp(Vector((.002, -.347, 1.590)), cup_amount)
@@ -608,14 +611,15 @@ def pour(s):
         kit.rigid(hand, wrist, rot)
     inhale = math.sin(math.pi * max(0, min(1, (s - 204) / 36)))
     gaze_target = cpos + crot @ GAZE
-    kit.look(gaze_target, math.radians(1.5 * inhale) * cup_amount)
+    approval_nod = sum(degrees * window(frame, *timing) for timing, degrees in APPROVAL_NODS)
+    kit.look(gaze_target, math.radians(1.5 * inhale * cup_amount + approval_nod))
     kit.aim_eyes(gaze_target, convergence=1 - (1 - SIP_EYE_CONVERGENCE) * cup_amount)
     warmth = kit.ramp(s, 128, 148) * (1 - kit.ramp(s, 270, 298))
     aroma = rig.pose.bones['aroma']
     aroma.scale = (max(.01, warmth), max(.01, warmth * (1 + .06 * math.sin(s * .12))), max(.01, warmth))
     aroma.rotation_quaternion = Matrix.Rotation(math.radians(5) * math.sin(s * .08) * warmth, 3, 'Y').to_quaternion()
     flow = kit.ramp(s, 62, 66) * (1 - kit.ramp(s, 125, 129))
-    level = .42 + .58 * kit.ramp(s, 66, 125) - .58 * kit.ramp(s, 276, 300)
+    level = .42 + .58 * kit.ramp(s, 66, 125) - .58 * kit.ramp(s, 276, SOURCE_FRAMES)
     surface = LIQUID_BOTTOM.z + FILL_DEPTH * level
     length = (STREAM_START.z - surface) / (STREAM_START.z - END.z)
     rig.pose.bones['stream'].scale = (max(.01, flow), max(.01, flow * length), max(.01, flow))
@@ -627,7 +631,7 @@ def sway(s, activity):
     """Layer 2: the shared secondary motion; the props follow the gloves that hold them."""
     held = {'hand.R': ('kettle', 'stream'), 'hand.L': ('cup',)}
     before = {n: rig.pose.bones[n].matrix.copy() for hand, props in held.items() for n in (hand, *props)}
-    santa_motion.sway(rig, (s - 1) / (FRAMES - 1), activity)
+    santa_motion.sway(rig, (s - 1) / (SOURCE_FRAMES - 1), activity)
     bpy.context.view_layer.update()
     for hand, props in held.items():
         delta = rig.pose.bones[hand].matrix @ before[hand].inverted()
@@ -667,10 +671,16 @@ def lean(frame):
 # and its far side rises to the moustache.
 CUP_TILT_DEGREES = 17.0
 LIP_APPROACH = Vector((.018, .107, -.044))
-APPROACH = (199, 217, 248, 266)  # rise, at the lips, lower, back down
+APPROACH = (199, 217, 245, 257)  # rise, at the lips, then pull clear
 TILT = (215, 229, 240, 255)
 DRINK_START, DRINK_FINISH = 217, 248
 FILL_START, FILL_FINISH = 65, 127
+SIP_SETTLE = .063  # follow the rim down slightly as the last sip levels out
+# Draw the cup forward, then dip it below the lower lip while Santa nods.
+APPROVAL_CUP_OFFSET = Vector((.040, -.061, -.034))
+APPROVAL_CUP_DROP = .10
+APPROVAL_NODS = (((257, 266, 266, 276), 6.0), ((278, 287, 287, 297), 4.5))
+CUP_RETURN = (309, 327)  # 12 frames of pause after the second nod recovers
 
 
 def window(frame, a, b, c, d):
@@ -687,8 +697,11 @@ def sip(frame):
     cup_before, hand_before = cup.matrix.copy(), hand.matrix.copy()
     pivot = cup_before.translation.copy()
     angle = math.radians(-CUP_TILT_DEGREES * window(frame, *TILT))
+    withdrawal = window(frame, APPROACH[2], APPROACH[3], *CUP_RETURN)
+    shift = LIP_APPROACH * window(frame, *APPROACH) + APPROVAL_CUP_OFFSET * withdrawal
+    shift.z -= APPROVAL_CUP_DROP * window(frame, 249, APPROACH[3], *CUP_RETURN)
     # One rigid transform moves both the cup and the glove, so the grip cannot slip.
-    delta = (Matrix.Translation(LIP_APPROACH * window(frame, *APPROACH)) @ Matrix.Translation(pivot)
+    delta = (Matrix.Translation(shift) @ Matrix.Translation(pivot)
              @ Matrix.Rotation(angle, 4, 'X') @ Matrix.Translation(-pivot))
     cup.matrix = delta @ cup_before
     bpy.context.view_layer.update()
@@ -715,8 +728,10 @@ def sip(frame):
 
 def pose_at(t):
     frame = round(1 + t * (FRAMES - 1))
-    s = eased_source(frame)
-    sway(s, pour(s))
+    # Ease the extra time into the source motion after the cup clears his lips.
+    source_frame = frame - (FRAMES - SOURCE_FRAMES) * ramp5(frame, APPROACH[3], FRAMES)
+    s = eased_source(source_frame)
+    sway(s, pour(s, frame))
     lean(frame)
     sip(frame)
 
