@@ -549,6 +549,7 @@ print(f'[model] Santa01 has {len(santa.data.vertices):,} vertices, {len(santa.da
 # -------------------- the loop
 FRAMES = 300
 GAZE = END - CUP  # look at the chai surface, from the cup bone's origin
+SIP_EYE_CONVERGENCE = .5  # soften the inward turn as the cup comes close
 # Turn the raised cup with the forearm while keeping the broad side of the handle visible.
 RAISE_TURN = -22.0
 
@@ -606,8 +607,9 @@ def pour(s):
         solve_arm(side, SHOULDERS[side], wrist)
         kit.rigid(hand, wrist, rot)
     inhale = math.sin(math.pi * max(0, min(1, (s - 204) / 36)))
-    kit.look(cpos + crot @ GAZE, math.radians(1.5 * inhale) * cup_amount)
-    kit.aim_eyes(cpos + crot @ GAZE)
+    gaze_target = cpos + crot @ GAZE
+    kit.look(gaze_target, math.radians(1.5 * inhale) * cup_amount)
+    kit.aim_eyes(gaze_target, convergence=1 - (1 - SIP_EYE_CONVERGENCE) * cup_amount)
     warmth = kit.ramp(s, 128, 148) * (1 - kit.ramp(s, 270, 298))
     aroma = rig.pose.bones['aroma']
     aroma.scale = (max(.01, warmth), max(.01, warmth * (1 + .06 * math.sin(s * .12))), max(.01, warmth))

@@ -101,11 +101,12 @@ assert max(tilts[f] for f in list(range(1, 210)) + list(range(260, 301))) < 2, '
 assert max(steam[f] for f in range(255, 301)) < .01, 'Steam should fade with the last sip'
 # The eyes track the cup: each gaze points closer to it than the face does, and it moves when the cup is raised.
 gazes={}
+head = rig.pose.bones['head']
+head_rest_inverse = head.bone.matrix_local.inverted()
 for frame in (1,92,204):
     scene.frame_set(frame)
     cup=transformed('cup',full)
-    head=rig.pose.bones['head']
-    face=(head.matrix.to_3x3() @ rig.data.bones['head'].matrix_local.to_3x3().inverted() @ Vector((0,-1,0))).normalized()
+    face=((head.matrix @ head_rest_inverse).to_3x3() @ Vector((0,-1,0))).normalized()
     for side in 'LR':
         eye=rig.pose.bones['eye.'+side]
         gaze=(eye.tail-eye.head).normalized()
@@ -113,6 +114,17 @@ for frame in (1,92,204):
         assert gaze.angle(to_cup) < face.angle(to_cup)-.1, (frame,side,'eye is not looking at the cup')
         gazes[frame,side]=gaze
 assert all(gazes[1,s].angle(gazes[204,s]) > .15 for s in 'LR'), 'Eyes do not follow the raised cup'
+# Check the difference in horizontal eye angles while the cup is at his lips.
+for frame in range(217, 249):
+    scene.frame_set(frame)
+    to_head = (head.matrix @ head_rest_inverse).to_3x3().inverted()
+    yaws = []
+    for side in 'LR':
+        eye = rig.pose.bones['eye.' + side]
+        gaze = to_head @ (eye.tail - eye.head)
+        yaws.append(math.atan2(gaze.x, -gaze.y))
+    convergence = math.degrees(yaws[1] - yaws[0])
+    assert 0 < convergence < 15, (frame, 'sip gaze convergence', convergence)
 # Skinning itself must stay finite, including a nearly collapsed liquid stream and an empty cup.
 for frame in (1,42,62,92,128,160,190,222,240,258,300):
     scene.frame_set(frame)

@@ -498,15 +498,21 @@ def look(target, extra_nod=0, turn_share=.6, nod_share=.35):
     bpy.context.view_layer.update()
 
 
-def aim_eyes(target, down_limit=EYE_DOWN_LIMIT):
-    """Turn the eyes toward `target`, at most EYE_LIMIT from straight ahead and at most
-    `down_limit` radians below level in the head's frame (keeping the sideways turn)."""
+def aim_eyes(target, down_limit=EYE_DOWN_LIMIT, convergence=1.0):
+    """Aim the eyes within the sideways and downward limits in the head's frame.
+
+    Lower `convergence` brings the eyes' horizontal aim closer to a shared direction.
+    """
     head = rig.pose.bones['head']
     head_deform = head.matrix @ rig.data.bones['head'].matrix_local.inverted()
     local_target = head_deform.inverted() @ Vector(target)
-    for side in ('L', 'R'):
-        pivot = rig.data.bones['eye.' + side].head_local
-        gaze = (local_target - pivot).normalized()
+    eyes = (rig.pose.bones['eye.L'], rig.pose.bones['eye.R'])
+    center_x = (eyes[0].bone.head_local.x + eyes[1].bone.head_local.x) / 2
+    for eye in eyes:
+        pivot = eye.bone.head_local
+        gaze = local_target - pivot
+        gaze.x += (1 - convergence) * (pivot.x - center_x)
+        gaze.normalize()
         if -gaze.z > math.sin(down_limit):
             level = Vector((gaze.x, gaze.y, 0))
             level = level.normalized() if level.length > 1e-6 else Vector((0, -1, 0))
@@ -515,7 +521,7 @@ def aim_eyes(target, down_limit=EYE_DOWN_LIMIT):
         if twist.angle > EYE_LIMIT:
             twist = Quaternion(twist.axis, EYE_LIMIT)
         deform = Matrix.Translation(pivot) @ twist.to_matrix().to_4x4() @ Matrix.Translation(-pivot)
-        rig.pose.bones['eye.' + side].matrix = head_deform @ deform @ rig.data.bones['eye.' + side].matrix_local
+        eye.matrix = head_deform @ deform @ eye.bone.matrix_local
     bpy.context.view_layer.update()
 
 
